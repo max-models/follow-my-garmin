@@ -1,0 +1,27 @@
+{
+  "name": "follow-my-garmin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Astro site for following a bikepacking trip with rotating Garmin LiveTrack links.",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "keywords": [
+    "astro",
+    "garmin",
+    "bikepacking",
+    "livetrack"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@types/leaflet": "^1.9.21",
+    "astro": "^6.4.3",
+    "leaflet": "^1.9.4",
+    "typescript": "^6.0.3"
+  }
+}

@@ -8,7 +8,8 @@ An Astro website for a bikepacking trip where the Garmin LiveTrack URL can chang
 - Trip metadata and day-by-day entries live in `src/data/trip.ts`.
 - The browser picks the current day from the visitor's local date.
 - If there is no entry for today yet, the site falls back to the most recent day with a Garmin link.
-- The Garmin iframe is only activated for the selected current day in the browser. Older days stay in the timeline with direct Garmin links because Garmin LiveTrack sessions usually expire after the ride ends.
+- During the Astro build, the site fetches Garmin LiveTrack HTML and extracts track points into its own route data.
+- The browser renders those extracted points on its own map and offers a GPX download for the selected day.
 
 ## Edit the trip
 
@@ -43,7 +44,7 @@ Each day entry looks like this:
 1. Add the new day in `src/data/trip.ts` ahead of time with `livetrackUrl: null`.
 2. Once the ride starts and Garmin creates the session, paste the new LiveTrack URL into that day's `livetrackUrl`.
 3. Optionally update the day's `status` from `planned` to `riding`.
-4. Run a new Astro build and redeploy.
+4. Push to `main` to trigger the GitHub Pages deployment workflow.
 
 ## Local development
 
@@ -73,14 +74,14 @@ npm run preview
 
 ## Deployment
 
-This Astro app builds to static files in `dist/`, so it can be deployed to any static host, including:
+This repository includes `.github/workflows/deploy-pages.yml`, which builds the Astro app and publishes it to GitHub Pages on every push to `main`.
 
-- GitHub Pages
-- Netlify
-- Cloudflare Pages
-- Vercel static hosting
+The same workflow also runs every 15 minutes so the extracted route can refresh during an active Garmin session without a manual redeploy.
+
+In the repository settings, set **Pages** to use **GitHub Actions** as the source.
+
+The Astro config automatically applies the repository base path during GitHub Actions builds so the site works from the GitHub Pages project URL.
 
 ## Important Garmin caveat
 
-Garmin LiveTrack embedding is not a documented public embed API. It works with a normal iframe today, but Garmin could change that behavior later. The page always keeps a direct Garmin link visible as a fallback.
-# follow-my-garmin
+Garmin LiveTrack does not provide a documented public GPX or embed API for this use case. This site extracts route points from Garmin's public LiveTrack page at build time, so if Garmin changes that page structure the custom map may stop updating until the extractor is adjusted. The page always keeps a direct Garmin link visible as a fallback.

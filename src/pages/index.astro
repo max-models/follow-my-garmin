@@ -1,0 +1,127 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import "leaflet/dist/leaflet.css";
+import { tripData } from "../data/trip";
+import { loadRouteDataByDate } from "../lib/garmin";
+import {
+  formatLongDate,
+  getLocalIsoDate,
+  normalizeGarminUrl,
+  selectCurrentDay,
+  serializeDataForScript,
+  sortDays,
+} from "../lib/trip";
+
+const sortedDays = sortDays(tripData.days);
+const initialSelection = selectCurrentDay(sortedDays, getLocalIsoDate());
+const initialDay = initialSelection.day;
+const initialUrl = normalizeGarminUrl(initialDay.livetrackUrl);
+const routesByDate = await loadRouteDataByDate(sortedDays);
+const pageTitle = tripData.trip.title || "Follow My Garmin Trip";
+const pageDescription =
+  tripData.trip.subtitle ||
+  "Keep one stable trip page while updating the Garmin LiveTrack link each day.";
+const trackerPayload = {
+  tripData,
+  routesByDate,
+};
+---
+
+<BaseLayout title={pageTitle} description={pageDescription}>
+  <div class="page-shell">
+    <header class="hero">
+      <p class="eyebrow">Bikepacking trip tracker</p>
+      <h1 id="trip-title">{pageTitle}</h1>
+      <p id="trip-subtitle" class="hero-copy">{pageDescription}</p>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel-live" aria-labelledby="live-heading">
+        <div class="panel-header">
+          <div>
+            <p class="section-kicker">Current view</p>
+            <h2 id="live-heading">Today's live tracking</h2>
+          </div>
+          <div class="action-links">
+            <a
+              id="gpx-link"
+              class:list={["button-link", "button-link-secondary", "hidden"]}
+              href="#"
+              download
+            >
+              Download GPX
+            </a>
+            <a
+              id="live-link"
+              class:list={["button-link", !initialUrl && "hidden"]}
+              href={initialUrl ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open in Garmin LiveTrack
+            </a>
+          </div>
+        </div>
+
+        <div class="current-day-meta">
+          <div>
+            <h3 id="current-day-title">{initialDay.title || "Trip day"}</h3>
+            <p id="current-day-date" class="muted">{formatLongDate(initialDay.date)}</p>
+          </div>
+          <span id="current-day-status" class:list={["status-pill", !initialDay.status && "hidden"]}>
+            {initialDay.status}
+          </span>
+        </div>
+
+        <p id="current-day-location" class:list={["muted", !initialDay.location && "hidden"]}>
+          {initialDay.location}
+        </p>
+        <p id="live-context" class="info-banner">{initialSelection.reason}</p>
+
+        <div id="live-map-shell" class="map-shell hidden">
+          <div id="live-map" class="map-canvas" aria-label="Route map"></div>
+        </div>
+
+        <div id="live-placeholder" class="empty-state">
+          {
+            initialUrl
+              ? "Open the Garmin link below, or wait a moment while the page loads the extracted route onto the custom map."
+              : "Add today's Garmin LiveTrack URL in src/data/trip.ts once the ride has started, and this page will switch from the placeholder to the custom route map automatically."
+          }
+        </div>
+        <div id="map-stats" class="map-stats hidden">
+          <div class="stat-card">
+            <span class="stat-label">Distance</span>
+            <strong id="stat-distance">-</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Duration</span>
+            <strong id="stat-duration">-</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Last update</span>
+            <strong id="stat-updated">-</strong>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Track points</span>
+            <strong id="stat-points">-</strong>
+          </div>
+        </div>
+        <p id="current-day-notes" class:list={["notes", !initialDay.notes && "hidden"]}>
+          {initialDay.notes}
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <script id="tracker-data" type="application/json" set:html={serializeDataForScript(trackerPayload)}></script>
+  <script>
+    import { setupTripTracker } from "../scripts/tracker";
+
+    const tripDataElement = document.getElementById("tracker-data");
+
+    if (tripDataElement?.textContent) {
+      void setupTripTracker(JSON.parse(tripDataElement.textContent));
+    }
+  </script>
+</BaseLayout>
