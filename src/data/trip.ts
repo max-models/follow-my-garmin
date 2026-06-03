@@ -1,6 +1,7 @@
 export interface CollectionActivity {
   livetrackUrl?: string | null;
   notes?: string;
+  routeGpxFile?: string | null;
 }
 
 export interface Collection {

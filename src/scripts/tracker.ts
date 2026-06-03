@@ -1,10 +1,12 @@
 import type { GarminRouteData, GarminRouteOk, GarminTrackPoint } from "../lib/garmin";
+import type { PlannedRouteData } from "../lib/gpx";
 
 interface TrackerActivity {
   color: string;
   livetrackUrl: string | null;
   notes: string | null;
   routeData: GarminRouteData | null;
+  plannedRouteData: PlannedRouteData | null;
 }
 
 interface TrackerCollection {
@@ -26,6 +28,7 @@ interface RouteEntry {
   livetrackUrl: string | null;
   notes: string | null;
   routeData: GarminRouteOk;
+  plannedRouteData: PlannedRouteData | null;
 }
 
 interface ChartSeriesPoint {
@@ -41,6 +44,17 @@ interface ChartSeries {
   points: ChartSeriesPoint[];
 }
 
+interface GraphMetricConfig {
+  key: "elevation" | "speed" | "heartRate" | "power" | "cadence";
+  title: string;
+  xLabel: string;
+  yLabel: string;
+  baselineAtZero: boolean;
+  xFormatter: (v: number) => string;
+  yFormatter: (v: number) => string;
+  selectPoint: (point: GarminTrackPoint, prev?: GarminTrackPoint) => ChartSeriesPoint | null;
+}
+
 interface LeafletState {
   map: import("leaflet").Map;
   tileLayer: import("leaflet").TileLayer;
@@ -53,6 +67,7 @@ let visibleCollections: Set<number> = new Set();
 let allRouteEntries: RouteEntry[] = [];
 let trackerCollections: TrackerCollection[] = [];
 let activeCollectionIndex: number | null = null;
+let activeGraphMetric: GraphMetricConfig["key"] = "speed";
 
 export async function setupTripTracker(payload: TrackerPayload): Promise<void> {
   const { collections } = payload;
@@ -74,6 +89,7 @@ export async function setupTripTracker(payload: TrackerPayload): Promise<void> {
         livetrackUrl: activity.livetrackUrl,
         notes: activity.notes,
         routeData: activity.routeData as GarminRouteOk,
+        plannedRouteData: activity.plannedRouteData,
       })),
   );
 
@@ -109,6 +125,7 @@ async function renderMap(options: {
   mapShell.classList.add("hidden");
   placeholder.classList.remove("hidden");
   hideMapStats();
+  hideLiveStats();
   hideGraphs();
 
   const allVisible = getVisibleRouteEntries();
@@ -153,6 +170,16 @@ async function renderMap(options: {
       leafletState.collectionGroups.set(entry.collectionIndex, group);
     }
 
+    if (entry.plannedRouteData && entry.plannedRouteData.points.length > 1) {
+      const plannedLatLngs = entry.plannedRouteData.points.map((p) => [p.lat, p.lon] as [number, number]);
+      Leaflet.polyline(plannedLatLngs, {
+        color: "#94a3b8",
+        weight: 3,
+        opacity: 0.7,
+        dashArray: "8 8",
+      }).addTo(group);
+    }
+
     const latLngs = entry.routeData.points.map((p) => [p.lat, p.lon] as [number, number]);
     Leaflet.polyline(latLngs, { color: entry.color, weight: 4, opacity: 0.9 }).addTo(group);
 
@@ -190,6 +217,7 @@ async function renderMap(options: {
   placeholder.classList.add("hidden");
 
   updateMapStats(allVisible);
+  renderLiveStats(allVisible);
   renderGraphs(allVisible);
 
   requestAnimationFrame(() => {
@@ -219,6 +247,7 @@ function selectCollection(collectionIndex: number): void {
 
   const visible = getVisibleRouteEntries();
   updateMapStats(visible);
+  renderLiveStats(visible);
   renderGraphs(visible);
   renderActivityList(trackerCollections, activeCollectionIndex);
   updateCollectionButtonStates();
@@ -306,123 +335,223 @@ function hideMapStats(): void {
   }
 }
 
-function renderGraphs(routes: RouteEntry[]): void {
-  const elevationGraph = getElement<HTMLElement>("elevation-graph");
-  const elevationCanvas = getElement<HTMLDivElement>("elevation-graph-canvas");
-  const speedGraphs = getElement<HTMLElement>("route-graphs");
-  const speedGrid = getElement<HTMLDivElement>("graph-grid");
+function renderLiveStats(routes: RouteEntry[]): void {
+  const container = getElement<HTMLDivElement>("live-stats");
+  if (!container) {
+    return;
+  }
 
-  if (!elevationGraph || !elevationCanvas || !speedGraphs || !speedGrid) {
+  const cards = routes
+    .filter((entry) => entry.routeData.summary.isActive)
+    .map((entry) => {
+      const latestPoint = entry.routeData.points.at(-1);
+      if (!latestPoint) {
+        return "";
+      }
+
+      const speedKmh =
+        typeof latestPoint.speedMetersPerSec === "number"
+          ? latestPoint.speedMetersPerSec * 3.6
+          : deriveSpeedKmh(latestPoint, entry.routeData.points.at(-2));
+
+      return `
+        <article class="live-stat-card">
+          <h3>${escapeHtml(entry.activityLabel)}</h3>
+          <div class="live-stat-grid">
+            <span>Speed <strong>${escapeHtml(formatSpeed(speedKmh))}</strong></span>
+            <span>Distance <strong>${escapeHtml(formatDistance(latestPoint.distanceMeters))}</strong></span>
+            <span>Elevation <strong>${escapeHtml(formatElevation(latestPoint.elevation))}</strong></span>
+            <span>HR <strong>${escapeHtml(formatHeartRate(latestPoint.heartRateBeatsPerMin))}</strong></span>
+            <span>Cadence <strong>${escapeHtml(formatCadence(latestPoint.cadenceCyclesPerMin))}</strong></span>
+            <span>Power <strong>${escapeHtml(formatPower(latestPoint.powerWatts))}</strong></span>
+            <span>Duration <strong>${escapeHtml(formatDuration(latestPoint.durationSecs))}</strong></span>
+            <span>Updated <strong>${escapeHtml(formatDateTime(entry.routeData.summary.lastReportedTime))}</strong></span>
+          </div>
+        </article>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  if (!cards) {
+    hideLiveStats();
+    return;
+  }
+
+  container.innerHTML = cards;
+  container.classList.remove("hidden");
+}
+
+function hideLiveStats(): void {
+  const container = getElement<HTMLDivElement>("live-stats");
+  if (container) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+  }
+}
+
+function renderGraphs(routes: RouteEntry[]): void {
+  const graphSection = getElement<HTMLElement>("route-graphs");
+  const graphHeading = getElement<HTMLElement>("graphs-heading");
+  const switcher = getElement<HTMLDivElement>("graph-switcher");
+  const canvas = getElement<HTMLDivElement>("graph-canvas");
+
+  if (!graphSection || !graphHeading || !switcher || !canvas) {
     return;
   }
 
   if (routes.length === 0) {
-    elevationGraph.classList.add("hidden");
-    elevationCanvas.innerHTML = "";
-    speedGraphs.classList.add("hidden");
-    speedGrid.innerHTML = "";
+    hideGraphs();
     return;
   }
 
-  const elevationSeries = buildCombinedSeries(routes, (point) =>
-    typeof point.distanceMeters === "number" && typeof point.elevation === "number"
-      ? { x: point.distanceMeters, y: point.elevation }
-      : null,
-  );
+  const metrics = getGraphMetrics();
+  const available = metrics
+    .map((metric) => ({
+      metric,
+      series: buildCombinedSeries(routes, metric.selectPoint),
+    }))
+    .filter((entry) => entry.series.length > 0);
 
-  const speedSeries = buildCombinedSeries(routes, (point, prev) => {
-    if (typeof point.durationSecs !== "number") {
-      return null;
-    }
-    if (typeof point.speedMetersPerSec === "number") {
-      return { x: point.durationSecs, y: point.speedMetersPerSec * 3.6 };
-    }
-    const derived = deriveSpeedKmh(point, prev);
-    return typeof derived === "number" ? { x: point.durationSecs, y: derived } : null;
-  });
-
-  if (elevationSeries.length > 0) {
-    elevationCanvas.innerHTML = `
-      <article class="graph-card graph-card--full">
-        <div class="graph-card-header">
-          <h3>Elevation</h3>
-          <span class="graph-axis-label">Distance → Metres</span>
-        </div>
-        <div class="graph-canvas">${buildLineChartSvg({
-          series: elevationSeries,
-          xFormatter: formatDistance,
-          yFormatter: (v) => `${Math.round(v)} m`,
-          baselineAtZero: false,
-          xLabel: "Distance",
-          yLabel: "Metres",
-        })}</div>
-      </article>`;
-    elevationGraph.classList.remove("hidden");
-  } else {
-    elevationGraph.classList.add("hidden");
-    elevationCanvas.innerHTML = "";
-  }
-
-  const cards: Array<{ title: string; xLabel: string; yLabel: string; series: ChartSeries[]; baselineAtZero: boolean; xFormatter: (v: number) => string; yFormatter: (v: number) => string }> = [];
-
-  if (speedSeries.length > 0) {
-    cards.push({
-      title: "Speed",
-      xLabel: "Elapsed time",
-      yLabel: "km/h",
-      series: speedSeries,
-      baselineAtZero: true,
-      xFormatter: formatDuration,
-      yFormatter: (v) => `${Math.round(v)} km/h`,
-    });
-  }
-
-  if (cards.length === 0) {
-    speedGraphs.classList.add("hidden");
-    speedGrid.innerHTML = "";
+  if (available.length === 0) {
+    hideGraphs();
     return;
   }
 
-  speedGrid.innerHTML = cards
+  if (!available.some((entry) => entry.metric.key === activeGraphMetric)) {
+    activeGraphMetric = available[0].metric.key;
+  }
+
+  switcher.innerHTML = available
     .map(
-      (card) => `
-      <article class="graph-card">
-        <div class="graph-card-header">
-          <h3>${escapeHtml(card.title)}</h3>
-          <span class="graph-axis-label">${escapeHtml(card.xLabel)} → ${escapeHtml(card.yLabel)}</span>
-        </div>
-        <div class="graph-canvas">${buildLineChartSvg({
-          series: card.series,
-          xFormatter: card.xFormatter,
-          yFormatter: card.yFormatter,
-          baselineAtZero: card.baselineAtZero,
-          xLabel: card.xLabel,
-          yLabel: card.yLabel,
-        })}</div>
-      </article>`,
+      ({ metric }) => `
+      <button class="graph-toggle-button ${metric.key === activeGraphMetric ? "is-active" : ""}" type="button" data-metric="${metric.key}" role="tab" aria-selected="${metric.key === activeGraphMetric ? "true" : "false"}">
+        ${escapeHtml(metric.title)}
+      </button>`,
     )
     .join("");
 
-  speedGraphs.classList.remove("hidden");
+  const selected = available.find((entry) => entry.metric.key === activeGraphMetric) ?? available[0];
+  graphHeading.textContent = selected.metric.title;
+  canvas.innerHTML = `
+    <article class="graph-card graph-card--full">
+      <div class="graph-card-header">
+        <h3>${escapeHtml(selected.metric.title)}</h3>
+        <span class="graph-axis-label">${escapeHtml(selected.metric.xLabel)} → ${escapeHtml(selected.metric.yLabel)}</span>
+      </div>
+      <div class="graph-canvas">${buildLineChartSvg({
+        series: selected.series,
+        xFormatter: selected.metric.xFormatter,
+        yFormatter: selected.metric.yFormatter,
+        baselineAtZero: selected.metric.baselineAtZero,
+        xLabel: selected.metric.xLabel,
+        yLabel: selected.metric.yLabel,
+      })}</div>
+    </article>`;
+
+  switcher.querySelectorAll<HTMLButtonElement>("[data-metric]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const metric = button.dataset.metric as GraphMetricConfig["key"] | undefined;
+      if (!metric || metric === activeGraphMetric) {
+        return;
+      }
+      activeGraphMetric = metric;
+      renderGraphs(routes);
+    });
+  });
+
+  graphSection.classList.remove("hidden");
 }
 
 function hideGraphs(): void {
-  const elevationGraph = getElement<HTMLElement>("elevation-graph");
-  const elevationCanvas = getElement<HTMLDivElement>("elevation-graph-canvas");
-  const speedGraphs = getElement<HTMLElement>("route-graphs");
-  const speedGrid = getElement<HTMLDivElement>("graph-grid");
-  if (elevationGraph) {
-    elevationGraph.classList.add("hidden");
+  const graphSection = getElement<HTMLElement>("route-graphs");
+  const switcher = getElement<HTMLDivElement>("graph-switcher");
+  const canvas = getElement<HTMLDivElement>("graph-canvas");
+
+  if (graphSection) {
+    graphSection.classList.add("hidden");
   }
-  if (elevationCanvas) {
-    elevationCanvas.innerHTML = "";
+  if (switcher) {
+    switcher.innerHTML = "";
   }
-  if (speedGraphs) {
-    speedGraphs.classList.add("hidden");
+  if (canvas) {
+    canvas.innerHTML = "";
   }
-  if (speedGrid) {
-    speedGrid.innerHTML = "";
-  }
+}
+
+function getGraphMetrics(): GraphMetricConfig[] {
+  return [
+    {
+      key: "speed",
+      title: "Speed",
+      xLabel: "Elapsed time",
+      yLabel: "km/h",
+      baselineAtZero: true,
+      xFormatter: formatDuration,
+      yFormatter: (v) => `${Math.round(v)} km/h`,
+      selectPoint: (point, prev) => {
+        if (typeof point.durationSecs !== "number") {
+          return null;
+        }
+        if (typeof point.speedMetersPerSec === "number") {
+          return { x: point.durationSecs, y: point.speedMetersPerSec * 3.6 };
+        }
+        const derived = deriveSpeedKmh(point, prev);
+        return typeof derived === "number" ? { x: point.durationSecs, y: derived } : null;
+      },
+    },
+    {
+      key: "elevation",
+      title: "Elevation",
+      xLabel: "Distance",
+      yLabel: "Metres",
+      baselineAtZero: false,
+      xFormatter: formatDistance,
+      yFormatter: (v) => `${Math.round(v)} m`,
+      selectPoint: (point) =>
+        typeof point.distanceMeters === "number" && typeof point.elevation === "number" && point.elevation !== 0
+          ? { x: point.distanceMeters, y: point.elevation }
+          : null,
+    },
+    {
+      key: "heartRate",
+      title: "Heart rate",
+      xLabel: "Elapsed time",
+      yLabel: "bpm",
+      baselineAtZero: true,
+      xFormatter: formatDuration,
+      yFormatter: (v) => `${Math.round(v)} bpm`,
+      selectPoint: (point) =>
+        typeof point.durationSecs === "number" && typeof point.heartRateBeatsPerMin === "number"
+          ? { x: point.durationSecs, y: point.heartRateBeatsPerMin }
+          : null,
+    },
+    {
+      key: "power",
+      title: "Power",
+      xLabel: "Elapsed time",
+      yLabel: "watts",
+      baselineAtZero: true,
+      xFormatter: formatDuration,
+      yFormatter: (v) => `${Math.round(v)} w`,
+      selectPoint: (point) =>
+        typeof point.durationSecs === "number" && typeof point.powerWatts === "number"
+          ? { x: point.durationSecs, y: point.powerWatts }
+          : null,
+    },
+    {
+      key: "cadence",
+      title: "Cadence",
+      xLabel: "Elapsed time",
+      yLabel: "rpm",
+      baselineAtZero: true,
+      xFormatter: formatDuration,
+      yFormatter: (v) => `${Math.round(v)} rpm`,
+      selectPoint: (point) =>
+        typeof point.durationSecs === "number" && typeof point.cadenceCyclesPerMin === "number"
+          ? { x: point.durationSecs, y: point.cadenceCyclesPerMin }
+          : null,
+    },
+  ];
 }
 
 /**
@@ -694,6 +823,41 @@ function formatDistance(distanceMeters?: number): string {
     return "-";
   }
   return distanceMeters >= 1000 ? `${(distanceMeters / 1000).toFixed(1)} km` : `${Math.round(distanceMeters)} m`;
+}
+
+function formatSpeed(speedKmh?: number | null): string {
+  if (typeof speedKmh !== "number" || Number.isNaN(speedKmh)) {
+    return "-";
+  }
+  return `${speedKmh.toFixed(1)} km/h`;
+}
+
+function formatElevation(elevationMeters?: number): string {
+  if (typeof elevationMeters !== "number" || Number.isNaN(elevationMeters)) {
+    return "-";
+  }
+  return `${Math.round(elevationMeters)} m`;
+}
+
+function formatHeartRate(heartRateBpm?: number): string {
+  if (typeof heartRateBpm !== "number" || Number.isNaN(heartRateBpm)) {
+    return "-";
+  }
+  return `${Math.round(heartRateBpm)} bpm`;
+}
+
+function formatCadence(cadenceRpm?: number): string {
+  if (typeof cadenceRpm !== "number" || Number.isNaN(cadenceRpm)) {
+    return "-";
+  }
+  return `${Math.round(cadenceRpm)} rpm`;
+}
+
+function formatPower(powerWatts?: number): string {
+  if (typeof powerWatts !== "number" || Number.isNaN(powerWatts)) {
+    return "-";
+  }
+  return `${Math.round(powerWatts)} w`;
 }
 
 function formatDuration(durationSecs?: number): string {
