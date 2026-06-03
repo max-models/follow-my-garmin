@@ -154,6 +154,37 @@ code {
   font-size: 1rem;
 }
 
+.live-stats {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.live-stat-card {
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(127, 29, 29, 0.25);
+}
+
+.live-stat-card h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+}
+
+.live-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.45rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.live-stat-grid strong {
+  color: var(--text);
+  margin-left: 0.3rem;
+}
+
 /* ── Graphs ── */
 
 .graphs {
@@ -169,13 +200,30 @@ code {
   letter-spacing: 0.1em;
 }
 
-.graph-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+.graph-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
-#elevation-graph-canvas {
+.graph-toggle-button {
+  border: 1px solid var(--border);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.graph-toggle-button.is-active {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: rgba(59, 130, 246, 0.22);
+}
+
+#graph-canvas {
   width: 100%;
 }
 
@@ -351,9 +399,5 @@ code {
 @media (max-width: 600px) {
   .map-canvas {
     min-height: 340px;
-  }
-
-  .graph-grid {
-    grid-template-columns: 1fr;
   }
 }

@@ -10,7 +10,10 @@ An Astro website for a bikepacking trip where the Garmin LiveTrack URL can chang
 - If there is no entry for today yet, the site falls back to the most recent day with a Garmin link.
 - During the Astro build, the site fetches Garmin LiveTrack HTML and extracts track points into its own route data.
 - The browser renders those extracted points on its own map, supports multiple activities with different colors, and offers a GPX download for each extracted activity.
-- Route graphs are rendered below the map, and active Garmin sessions also expose live metric charts such as heart rate, speed, power, cadence, and elevation when Garmin publishes that data.
+- Route graphs are rendered below the map in one switchable chart area (speed, elevation, heart rate, power, cadence) per activity.
+- Elevation charts ignore zero-value elevation points to avoid flatline artifacts from missing data.
+- Active Garmin sessions also expose a live stats box with the latest speed, distance, elevation, HR, cadence, and power.
+- You can optionally add a local GPX file path in `collections.yaml` (`routeGpxFile`) to draw a planned route in gray behind the live route.
 
 ## Edit the trip
 

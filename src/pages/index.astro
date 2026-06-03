@@ -6,11 +6,13 @@ import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import type { TripData } from "../data/trip";
 import { loadRouteData } from "../lib/garmin";
+import { loadPlannedRouteData } from "../lib/gpx";
 import { getActivityColor, getCollectionColor, serializeDataForScript } from "../lib/trip";
 
 const yamlContent = readFileSync(join(process.cwd(), "collections.yaml"), "utf-8");
 const tripData = loadYaml(yamlContent) as TripData;
 const routeData = await loadRouteData(tripData.collections);
+const plannedRouteData = await loadPlannedRouteData(tripData.collections);
 
 let activityColorIndex = 0;
 const collectionsWithColors = tripData.collections.map((col, index) => ({
@@ -31,6 +33,7 @@ const trackerPayload = {
       livetrackUrl: activity.livetrackUrl ?? null,
       notes: activity.notes ?? null,
       routeData: routeData[ci]?.[ai] ?? null,
+      plannedRouteData: plannedRouteData[ci]?.[ai] ?? null,
     })),
   })),
 };
@@ -72,14 +75,12 @@ const trackerPayload = {
         </div>
       </div>
 
-      <section id="elevation-graph" class="graphs hidden" aria-labelledby="elevation-heading">
-        <h2 id="elevation-heading" class="graphs-heading">Elevation</h2>
-        <div id="elevation-graph-canvas"></div>
-      </section>
+      <section id="live-stats" class="live-stats hidden" aria-label="Live activity metrics"></section>
 
       <section id="route-graphs" class="graphs hidden" aria-labelledby="graphs-heading">
         <h2 id="graphs-heading" class="graphs-heading">Speed</h2>
-        <div id="graph-grid" class="graph-grid"></div>
+        <div id="graph-switcher" class="graph-switcher" role="tablist" aria-label="Metric graph selector"></div>
+        <div id="graph-canvas"></div>
       </section>
 
       <div id="activity-list" class="activity-list hidden"></div>
