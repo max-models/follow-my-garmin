@@ -86,6 +86,8 @@ code {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
 }
 
 .collection-btn {
@@ -95,12 +97,12 @@ code {
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
   border: 1.5px solid var(--col-color, var(--accent));
-  background: transparent;
+  background: rgba(148, 163, 184, 0.08);
   color: var(--text);
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 140ms ease, background 140ms ease;
+  transition: opacity 140ms ease, background 140ms ease, border-color 140ms ease;
 }
 
 .collection-btn::before {
@@ -114,7 +116,13 @@ code {
 }
 
 .collection-btn--off {
-  opacity: 0.38;
+  opacity: 0.55;
+  border-color: rgba(148, 163, 184, 0.3);
+  background: transparent;
+}
+
+.collection-btn[aria-selected="true"] {
+  background: rgba(96, 165, 250, 0.12);
 }
 
 /* ── Stats grid ── */
@@ -167,11 +175,19 @@ code {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
+#elevation-graph-canvas {
+  width: 100%;
+}
+
 .graph-card {
   padding: 1rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
+}
+
+.graph-card--full {
+  width: 100%;
 }
 
 .graph-card-header {
@@ -341,4 +357,3 @@ code {
     grid-template-columns: 1fr;
   }
 }
-
