@@ -1,122 +1,77 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import "leaflet/dist/leaflet.css";
-import { tripData } from "../data/trip";
-import { loadRouteDataByDate } from "../lib/garmin";
-import {
-  formatLongDate,
-  getPrimaryGarminUrl,
-  getLocalIsoDate,
-  selectCurrentDay,
-  serializeDataForScript,
-  sortDays,
-} from "../lib/trip";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { load as loadYaml } from "js-yaml";
+import type { TripData } from "../data/trip";
+import { loadRouteData } from "../lib/garmin";
+import { getCollectionColor, serializeDataForScript } from "../lib/trip";
 
-const sortedDays = sortDays(tripData.days);
-const initialSelection = selectCurrentDay(sortedDays, getLocalIsoDate());
-const initialDay = initialSelection.day;
-const initialUrl = getPrimaryGarminUrl(initialDay);
-const routesByDate = await loadRouteDataByDate(sortedDays);
-const pageTitle = tripData.trip.title || "Follow My Garmin Trip";
-const pageDescription =
-  tripData.trip.subtitle ||
-  "Keep one stable trip page while updating the Garmin LiveTrack link each day.";
+const yamlContent = readFileSync(join(process.cwd(), "collections.yaml"), "utf-8");
+const tripData = loadYaml(yamlContent) as TripData;
+const routeData = await loadRouteData(tripData.collections);
+
+const collectionsWithColors = tripData.collections.map((col, index) => ({
+  ...col,
+  color: getCollectionColor(index),
+}));
+
 const trackerPayload = {
-  tripData,
-  routesByDate,
+  collections: collectionsWithColors.map((col, ci) => ({
+    name: col.name,
+    color: col.color,
+    activities: col.activities.map((activity, ai) => ({
+      livetrackUrl: activity.livetrackUrl ?? null,
+      notes: activity.notes ?? null,
+      routeData: routeData[ci]?.[ai] ?? null,
+    })),
+  })),
 };
 ---
 
-<BaseLayout title={pageTitle} description={pageDescription}>
+<BaseLayout title="follow-my-garmin" description="Live Garmin track viewer for bikepacking trips.">
   <div class="page-shell">
-    <header class="hero">
-      <p class="eyebrow">Bikepacking trip tracker</p>
-      <h1 id="trip-title">{pageTitle}</h1>
-      <p id="trip-subtitle" class="hero-copy">{pageDescription}</p>
+    <header class="site-header">
+      <h1>follow-my-garmin</h1>
     </header>
 
-    <main class="layout">
-      <section class="panel panel-live" aria-labelledby="live-heading">
-        <div class="panel-header">
-          <div>
-            <p class="section-kicker">Trip overview</p>
-            <h2 id="live-heading">Trip tracks map</h2>
-          </div>
-          <a
-            id="day-live-link"
-            class:list={["button-link", !initialUrl && "hidden"]}
-            href={initialUrl ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open current Garmin session
-          </a>
+    <main>
+      <div id="map-shell" class="map-shell hidden">
+        <div id="main-map" class="map-canvas" aria-label="Route map"></div>
+      </div>
+
+      <div id="map-placeholder" class="empty-state">
+        Add Garmin LiveTrack URLs in <code>collections.yaml</code> once the ride has started.
+      </div>
+
+      <div id="collection-controls" class="collection-controls hidden"></div>
+
+      <div id="map-stats" class="map-stats hidden">
+        <div class="stat-card">
+          <span class="stat-label">Total distance</span>
+          <strong id="stat-distance">-</strong>
         </div>
-
-        <div class="current-day-meta">
-          <div>
-            <h3 id="current-day-title">{initialDay.title || "Trip day"}</h3>
-            <p id="current-day-date" class="muted">{formatLongDate(initialDay.date)}</p>
-          </div>
-          <span id="current-day-status" class:list={["status-pill", !initialDay.status && "hidden"]}>
-            {initialDay.status}
-          </span>
+        <div class="stat-card">
+          <span class="stat-label">Total duration</span>
+          <strong id="stat-duration">-</strong>
         </div>
-
-        <p id="current-day-location" class:list={["muted", !initialDay.location && "hidden"]}>
-          {initialDay.location}
-        </p>
-        <p id="live-context" class="info-banner">{initialSelection.reason}</p>
-
-        <div id="live-map-shell" class="map-shell hidden">
-          <div id="live-map" class="map-canvas" aria-label="Route map"></div>
+        <div class="stat-card">
+          <span class="stat-label">Last update</span>
+          <strong id="stat-updated">-</strong>
         </div>
-
-        <div id="live-placeholder" class="empty-state">
-          {
-            initialUrl
-              ? "Open the Garmin link below, or wait a moment while the page loads every extracted track onto the combined trip map."
-              : "Add Garmin LiveTrack URLs in src/data/trip.ts once the ride has started, and this page will switch from the placeholder to the combined trip map automatically."
-          }
+        <div class="stat-card">
+          <span class="stat-label">Track points</span>
+          <strong id="stat-points">-</strong>
         </div>
+      </div>
 
-        <div id="map-stats" class="map-stats hidden">
-          <div class="stat-card">
-            <span class="stat-label">Total distance</span>
-            <strong id="stat-distance">-</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Total duration</span>
-            <strong id="stat-duration">-</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Last update</span>
-            <strong id="stat-updated">-</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Track points</span>
-            <strong id="stat-points">-</strong>
-          </div>
-        </div>
-
-        <div id="activity-list" class="activity-list hidden"></div>
-
-        <section id="route-graphs" class="graphs hidden" aria-labelledby="graphs-heading">
-          <div class="graphs-header">
-            <div>
-              <p class="section-kicker">Route analysis</p>
-              <h3 id="graphs-heading">Graphs</h3>
-            </div>
-            <span id="graphs-live-pill" class="status-pill status-pill-live hidden">Live now</span>
-          </div>
-          <p id="graphs-context" class="graphs-context hidden"></p>
-          <div id="graph-grid" class="graph-grid"></div>
-        </section>
-
-        <p id="current-day-notes" class:list={["notes", !initialDay.notes && "hidden"]}>
-          {initialDay.notes}
-        </p>
+      <section id="route-graphs" class="graphs hidden" aria-labelledby="graphs-heading">
+        <h2 id="graphs-heading" class="graphs-heading">Elevation &amp; speed</h2>
+        <div id="graph-grid" class="graph-grid"></div>
       </section>
+
+      <div id="activity-list" class="activity-list hidden"></div>
     </main>
   </div>
 
