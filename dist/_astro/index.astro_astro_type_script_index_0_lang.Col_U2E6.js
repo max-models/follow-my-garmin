@@ -1,0 +1,67 @@
+const K=(function(){const n=typeof document<"u"&&document.createElement("link").relList;return n&&n.supports&&n.supports("modulepreload")?"modulepreload":"preload"})(),Q=function(t){return"/follow-my-garmin/"+t},H={},tt=function(n,o,a){let c=Promise.resolve();if(o&&o.length>0){let r=function(d){return Promise.all(d.map(p=>Promise.resolve(p).then(g=>({status:"fulfilled",value:g}),g=>({status:"rejected",reason:g}))))};var s=r;document.getElementsByTagName("link");const l=document.querySelector("meta[property=csp-nonce]"),e=l?.nonce||l?.getAttribute("nonce");c=r(o.map(d=>{if(d=Q(d),d in H)return;H[d]=!0;const p=d.endsWith(".css"),g=p?'[rel="stylesheet"]':"";if(document.querySelector(`link[href="${d}"]${g}`))return;const x=document.createElement("link");if(x.rel=p?"stylesheet":K,p||(x.as="script"),x.crossOrigin="",x.href=d,e&&x.setAttribute("nonce",e),document.head.appendChild(x),p)return new Promise((b,v)=>{x.addEventListener("load",b),x.addEventListener("error",()=>v(new Error(`Unable to preload CSS for ${d}`)))})}))}function i(l){const e=new Event("vite:preloadError",{cancelable:!0});if(e.payload=l,window.dispatchEvent(e),!e.defaultPrevented)throw l}return c.then(l=>{for(const e of l||[])e.status==="rejected"&&i(e.reason);return n().catch(i)})};let y=null,G=[],M=new Set,k=[],C=[],$=null;async function et(t){const{collections:n}=t;C=n,k=n.flatMap((s,l)=>s.activities.map((e,r)=>({col:s,ci:l,ai:r,activity:e})).filter(({activity:e})=>e.routeData?.status==="ok"&&e.routeData.points.length>0).map(({col:e,ci:r,ai:d,activity:p})=>({collectionIndex:r,collectionName:e.name,activityLabel:`${e.name} #${d+1}`,color:p.color,activityIndex:d,livetrackUrl:p.livetrackUrl,notes:p.notes,routeData:p.routeData})));const o=n.findIndex((s,l)=>k.some(e=>e.collectionIndex===l));$=o>=0?o:n.length>0?0:null,M=$===null?new Set:new Set([$]);const a=f("map-shell"),c=f("map-placeholder"),i=f("main-map");a&&c&&i&&await nt({mapShell:a,placeholder:c,mapElement:i,collections:n}),rt(n),X(n,$),pt()}async function nt(t){const{mapShell:n,placeholder:o,mapElement:a,collections:c}=t;n.classList.add("hidden"),o.classList.remove("hidden"),st(),lt();const i=B();if(i.length===0){o.innerHTML=ut(c);return}const s=await tt(()=>import("./leaflet-src.Byf149Wh.js").then(e=>e.l),[]);if(!y){const e=s.map(a,{zoomControl:!0,scrollWheelZoom:!0});s.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',maxZoom:19}).addTo(e);const r=new Map;y={map:e,tileLayer:s.tileLayer(""),collectionGroups:r}}y.collectionGroups.forEach(e=>e.remove()),y.collectionGroups.clear();const l=s.latLngBounds([]);for(const e of k){let r=y.collectionGroups.get(e.collectionIndex);r||(r=s.featureGroup().addTo(y.map),y.collectionGroups.set(e.collectionIndex,r));const d=e.routeData.points.map(g=>[g.lat,g.lon]);s.polyline(d,{color:e.color,weight:4,opacity:.9}).addTo(r);const p=d.at(-1);p&&s.circleMarker(p,{radius:6,color:"#ffffff",weight:2,fillColor:e.color,fillOpacity:1}).addTo(r),M.has(e.collectionIndex)&&l.extend(s.polyline(d).getBounds())}if(y.collectionGroups.forEach((e,r)=>{M.has(r)||e.remove()}),i.every(e=>e.routeData.points.length===1)){const e=i[0].routeData.points[0];y.map.setView([e.lat,e.lon],11)}else l.isValid()&&y.map.fitBounds(l,{padding:[72,72],maxZoom:13});n.classList.remove("hidden"),o.classList.add("hidden"),O(i),Z(i),requestAnimationFrame(()=>{y?.map.invalidateSize()})}function B(){return k.filter(t=>M.has(t.collectionIndex))}function ot(t){if(!y||!C[t])return;$=t,M=new Set([t]),y.collectionGroups.forEach((o,a)=>{a===t?o.addTo(y.map):o.remove()});const n=B();O(n),Z(n),X(C,$),at()}function at(){const t=f("collection-controls");t&&t.querySelectorAll("[data-collection-index]").forEach(n=>{const o=Number(n.dataset.collectionIndex),a=$===o;n.classList.toggle("collection-btn--off",!a),n.setAttribute("aria-selected",a?"true":"false")})}function rt(t){const n=f("collection-controls");if(n){if(t.length<2){n.classList.add("hidden");return}n.classList.remove("hidden"),n.innerHTML=t.map((o,a)=>`<button
+        class="collection-btn"
+        role="tab"
+        aria-selected="${$===a?"true":"false"}"
+        data-collection-index="${a}"
+        style="--col-color:${m(o.color)}"
+        type="button"
+      >${m(o.name)}</button>`).join(""),n.querySelectorAll("[data-collection-index]").forEach(o=>{o.addEventListener("click",()=>{const a=Number(o.dataset.collectionIndex);ot(a)})})}}function O(t){const n=t.reduce((s,l)=>s+(l.routeData.summary.totalDistanceMeters??0),0),o=t.reduce((s,l)=>s+(l.routeData.summary.totalDurationSecs??0),0),a=t.reduce((s,l)=>s+l.routeData.summary.pointCount,0),c=t.map(s=>s.routeData.summary.lastReportedTime).filter(s=>!!s).sort().at(-1);E("stat-distance",w(n)),E("stat-duration",S(o)),E("stat-updated",ht(c)),E("stat-points",String(a));const i=f("map-stats");i&&i.classList.remove("hidden")}function st(){const t=f("map-stats");t&&t.classList.add("hidden")}function Z(t){const n=f("elevation-graph"),o=f("elevation-graph-canvas"),a=f("route-graphs"),c=f("graph-grid");if(!n||!o||!a||!c)return;if(t.length===0){n.classList.add("hidden"),o.innerHTML="",a.classList.add("hidden"),c.innerHTML="";return}const i=I(t,e=>typeof e.distanceMeters=="number"&&typeof e.elevation=="number"?{x:e.distanceMeters,y:e.elevation}:null),s=I(t,(e,r)=>{if(typeof e.durationSecs!="number")return null;if(typeof e.speedMetersPerSec=="number")return{x:e.durationSecs,y:e.speedMetersPerSec*3.6};const d=it(e,r);return typeof d=="number"?{x:e.durationSecs,y:d}:null});i.length>0?(o.innerHTML=`
+      <article class="graph-card graph-card--full">
+        <div class="graph-card-header">
+          <h3>Elevation</h3>
+          <span class="graph-axis-label">Distance → Metres</span>
+        </div>
+        <div class="graph-canvas">${_({series:i,xFormatter:w,yFormatter:e=>`${Math.round(e)} m`,baselineAtZero:!1,xLabel:"Distance",yLabel:"Metres"})}</div>
+      </article>`,n.classList.remove("hidden")):(n.classList.add("hidden"),o.innerHTML="");const l=[];if(s.length>0&&l.push({title:"Speed",xLabel:"Elapsed time",yLabel:"km/h",series:s,baselineAtZero:!0,xFormatter:S,yFormatter:e=>`${Math.round(e)} km/h`}),l.length===0){a.classList.add("hidden"),c.innerHTML="";return}c.innerHTML=l.map(e=>`
+      <article class="graph-card">
+        <div class="graph-card-header">
+          <h3>${m(e.title)}</h3>
+          <span class="graph-axis-label">${m(e.xLabel)} → ${m(e.yLabel)}</span>
+        </div>
+        <div class="graph-canvas">${_({series:e.series,xFormatter:e.xFormatter,yFormatter:e.yFormatter,baselineAtZero:e.baselineAtZero,xLabel:e.xLabel,yLabel:e.yLabel})}</div>
+      </article>`).join(""),a.classList.remove("hidden")}function lt(){const t=f("elevation-graph"),n=f("elevation-graph-canvas"),o=f("route-graphs"),a=f("graph-grid");t&&t.classList.add("hidden"),n&&(n.innerHTML=""),o&&o.classList.add("hidden"),a&&(a.innerHTML="")}function I(t,n){const o=[];let a=0;for(const c of t){const i=c.routeData.points.map((e,r,d)=>n(e,r>0?d[r-1]:void 0)).filter(e=>e!==null&&Number.isFinite(e.x)&&Number.isFinite(e.y));if(i.length<2)continue;const s=i.at(-1).x,l=i.map(e=>({x:e.x+a,displayX:e.x,y:e.y}));o.push({color:c.color,label:c.activityLabel,xTotal:s,points:l}),a+=s}return o}function it(t,n){if(!n||typeof n.distanceMeters!="number"||typeof t.distanceMeters!="number"||typeof n.durationSecs!="number"||typeof t.durationSecs!="number")return null;const o=t.distanceMeters-n.distanceMeters,a=t.durationSecs-n.durationSecs;return o<=0||a<=0?null:o/a*3.6}function _(t){const{series:n,xFormatter:o,yFormatter:a,baselineAtZero:c,xLabel:i,yLabel:s}=t,l=680,e=240,r={top:16,right:16,bottom:34,left:48},d=n.flatMap(u=>u.points.map(h=>h.x)),p=n.flatMap(u=>u.points.map(h=>h.y)),g=0,x=Math.max(...d,1),b=Math.min(...p,0),v=Math.max(...p,1),F=v===b?Math.max(Math.abs(v)*.05,1):0,T=c?0:b-F,P=v+F,V=l-r.left-r.right,N=e-r.top-r.bottom,R=Math.max(P-T,1),j=u=>r.left+u/x*V,D=u=>r.top+N-(u-T)/R*N,W=Array.from({length:4},(u,h)=>{const L=T+R/3*h,A=D(L);return`<line x1="${r.left}" y1="${A}" x2="${l-r.right}" y2="${A}" class="graph-grid-line" />`}).join(""),z=n.map(u=>`<path d="${u.points.map((L,A)=>`${A===0?"M":"L"} ${j(L.x).toFixed(2)} ${D(L.y).toFixed(2)}`).join(" ")}" fill="none" stroke="${m(u.color)}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />`).join(""),Y=n.map(u=>u.points.map(h=>{const L=`${u.label}
+Current ${i}: ${o(h.displayX??h.x)}
+Current ${s}: ${a(h.y)}
+Total ${i}: ${o(u.xTotal)}`;return`<circle cx="${j(h.x).toFixed(2)}" cy="${D(h.y).toFixed(2)}" r="5" fill="${m(u.color)}" fill-opacity="0.001"><title>${U(L)}</title></circle>`}).join("")).join(""),J=[...new Map(n.map(u=>[u.label,u])).values()].map((u,h)=>`
+      <g transform="translate(${r.left+h*170}, ${e-6})">
+        <line x1="0" y1="-4" x2="16" y2="-4" stroke="${m(u.color)}" stroke-width="3" />
+        <text x="22" y="0" class="graph-legend-text">${m(u.label)}</text>
+      </g>`).join("");return`
+    <svg viewBox="0 0 ${l} ${e}" class="graph-svg" role="img">
+      <g>
+        ${W}
+        <line x1="${r.left}" y1="${r.top}" x2="${r.left}" y2="${e-r.bottom}" class="graph-axis" />
+        <line x1="${r.left}" y1="${e-r.bottom}" x2="${l-r.right}" y2="${e-r.bottom}" class="graph-axis" />
+        ${z}
+        ${Y}
+        <text x="${r.left}" y="${r.top-2}" class="graph-label">${m(a(P))}</text>
+        <text x="${r.left}" y="${e-r.bottom+26}" class="graph-label">${m(o(g))}</text>
+        <text x="${l-r.right}" y="${e-r.bottom+26}" text-anchor="end" class="graph-label">${m(o(x))}</text>
+        <text x="${r.left}" y="${e-r.bottom+26}" dy="-16" class="graph-label">${m(a(T))}</text>
+        ${J}
+      </g>
+    </svg>`}function X(t,n){const o=f("activity-list");if(!o)return;const a=t.flatMap((c,i)=>(n===null||n===i?c.activities:[]).map((s,l)=>{const e=k.find(v=>v.collectionIndex===i&&v.activityIndex===l),r=e?mt(e.routeData.points,`${c.name} #${l+1}`):null,d=dt(s.routeData,s.livetrackUrl),p=e?ct(e.routeData):"",g=s.notes?`<p class="activity-notes">${m(s.notes)}</p>`:"",x=s.livetrackUrl?`<a class="button-link" href="${m(s.livetrackUrl)}" target="_blank" rel="noreferrer">Open in Garmin</a>`:"",b=r?`<a class="button-link button-link-secondary" href="${r}" download="${yt(c.name)}-${l+1}.gpx">Download GPX</a>`:"";return`
+          <article class="activity-card">
+            <div class="activity-card__header">
+              <span class="activity-swatch" style="background:${m(s.color)}"></span>
+              <div>
+                <p class="activity-collection">${m(c.name)}</p>
+                <p class="activity-status">${m(d)}</p>
+              </div>
+            </div>
+            ${g}
+            ${p}
+            <div class="activity-actions">${b}${x}</div>
+          </article>`})).join("");if(!a){o.classList.add("hidden");return}o.innerHTML=a,o.classList.remove("hidden")}function ct(t){return`
+    <div class="activity-metrics">
+      <span>${m(w(t.summary.totalDistanceMeters))}</span>
+      <span>${m(S(t.summary.totalDurationSecs))}</span>
+      <span>${m(String(t.summary.pointCount))} pts</span>
+      ${t.summary.isActive?'<span class="activity-live-pill">Live</span>':""}
+    </div>`}function dt(t,n){return n?t?t.status==="ok"?t.summary.isActive?`Live now · ${w(t.summary.totalDistanceMeters)} · ${S(t.summary.totalDurationSecs)}`:`${w(t.summary.totalDistanceMeters)} · ${S(t.summary.totalDurationSecs)}`:t.status==="empty"?"Session exists but no route points are available yet.":"Route extraction failed; Garmin fallback is still available.":"Waiting for the next site refresh.":"No Garmin session URL yet."}function ut(t){return t.some(o=>o.activities.some(a=>a.livetrackUrl))?"The last build could not extract route data from Garmin. Use the Garmin links in the activity list as a fallback.":"Add Garmin LiveTrack URLs in <code>collections.yaml</code> once the ride has started."}function mt(t,n){const o=ft(t,n),a=URL.createObjectURL(new Blob([o],{type:"application/gpx+xml"}));return G.push(a),a}function pt(){G.forEach(t=>URL.revokeObjectURL(t)),G=[]}function ft(t,n){const o=t.map(a=>{const c=typeof a.elevation=="number"?`<ele>${a.elevation.toFixed(2)}</ele>`:"",i=a.time?`<time>${U(a.time)}</time>`:"";return`<trkpt lat="${a.lat}" lon="${a.lon}">${c}${i}</trkpt>`}).join("");return`<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="follow-my-garmin" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>${U(n)}</name>
+    <trkseg>${o}</trkseg>
+  </trk>
+</gpx>`}function w(t){return typeof t!="number"||Number.isNaN(t)?"-":t>=1e3?`${(t/1e3).toFixed(1)} km`:`${Math.round(t)} m`}function S(t){if(typeof t!="number"||Number.isNaN(t))return"-";const n=Math.floor(t/3600),o=Math.floor(t%3600/60);return n>0?`${n}h ${o}m`:`${o}m`}function ht(t){return t?new Intl.DateTimeFormat(void 0,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date(t)):"-"}function yt(t){return t.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"")}function m(t){return t.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;")}function U(t){return t.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&apos;")}function E(t,n){const o=f(t);o&&(o.textContent=n)}function f(t){return document.getElementById(t)}const q=document.getElementById("tracker-data");q?.textContent&&et(JSON.parse(q.textContent));
