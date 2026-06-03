@@ -56,7 +56,7 @@ export const tripData = {
           id: "evening-spin",
           title: "Evening spin",
           color: "#f97316",
-          livetrackUrl: null,
+          livetrackUrl: "https://livetrack.garmin.com/auth/sign-in?redirect=%2Fsession%2F37ddc630-f92c-8d38-9e31-88b9cba7e000%2Ftoken%2F5D1ECDF5FD5FEB867A3689951D08DB5&gateway=true",
           notes: "Add a second Garmin session here if the day contains another activity.",
         },
       ],
