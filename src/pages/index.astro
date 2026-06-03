@@ -6,15 +6,20 @@ import { join } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import type { TripData } from "../data/trip";
 import { loadRouteData } from "../lib/garmin";
-import { getCollectionColor, serializeDataForScript } from "../lib/trip";
+import { getActivityColor, getCollectionColor, serializeDataForScript } from "../lib/trip";
 
 const yamlContent = readFileSync(join(process.cwd(), "collections.yaml"), "utf-8");
 const tripData = loadYaml(yamlContent) as TripData;
 const routeData = await loadRouteData(tripData.collections);
 
+let activityColorIndex = 0;
 const collectionsWithColors = tripData.collections.map((col, index) => ({
   ...col,
   color: getCollectionColor(index),
+  activities: col.activities.map((activity) => ({
+    ...activity,
+    color: getActivityColor(activityColorIndex++),
+  })),
 }));
 
 const trackerPayload = {
@@ -22,6 +27,7 @@ const trackerPayload = {
     name: col.name,
     color: col.color,
     activities: col.activities.map((activity, ai) => ({
+      color: activity.color,
       livetrackUrl: activity.livetrackUrl ?? null,
       notes: activity.notes ?? null,
       routeData: routeData[ci]?.[ai] ?? null,
@@ -45,7 +51,7 @@ const trackerPayload = {
         Add Garmin LiveTrack URLs in <code>collections.yaml</code> once the ride has started.
       </div>
 
-      <div id="collection-controls" class="collection-controls hidden"></div>
+      <div id="collection-controls" class="collection-controls hidden" role="tablist" aria-label="Collections"></div>
 
       <div id="map-stats" class="map-stats hidden">
         <div class="stat-card">
@@ -66,8 +72,13 @@ const trackerPayload = {
         </div>
       </div>
 
+      <section id="elevation-graph" class="graphs hidden" aria-labelledby="elevation-heading">
+        <h2 id="elevation-heading" class="graphs-heading">Elevation</h2>
+        <div id="elevation-graph-canvas"></div>
+      </section>
+
       <section id="route-graphs" class="graphs hidden" aria-labelledby="graphs-heading">
-        <h2 id="graphs-heading" class="graphs-heading">Elevation &amp; speed</h2>
+        <h2 id="graphs-heading" class="graphs-heading">Speed</h2>
         <div id="graph-grid" class="graph-grid"></div>
       </section>
 

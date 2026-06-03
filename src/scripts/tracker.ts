@@ -1,6 +1,7 @@
 import type { GarminRouteData, GarminRouteOk, GarminTrackPoint } from "../lib/garmin";
 
 interface TrackerActivity {
+  color: string;
   livetrackUrl: string | null;
   notes: string | null;
   routeData: GarminRouteData | null;
@@ -19,6 +20,7 @@ interface TrackerPayload {
 interface RouteEntry {
   collectionIndex: number;
   collectionName: string;
+  activityLabel: string;
   color: string;
   activityIndex: number;
   livetrackUrl: string | null;
@@ -28,12 +30,14 @@ interface RouteEntry {
 
 interface ChartSeriesPoint {
   x: number;
+  displayX?: number;
   y: number;
 }
 
 interface ChartSeries {
   color: string;
   label: string;
+  xTotal: number;
   points: ChartSeriesPoint[];
 }
 
@@ -47,9 +51,12 @@ let leafletState: LeafletState | null = null;
 let gpxDownloadUrls: string[] = [];
 let visibleCollections: Set<number> = new Set();
 let allRouteEntries: RouteEntry[] = [];
+let trackerCollections: TrackerCollection[] = [];
+let activeCollectionIndex: number | null = null;
 
 export async function setupTripTracker(payload: TrackerPayload): Promise<void> {
   const { collections } = payload;
+  trackerCollections = collections;
 
   allRouteEntries = collections.flatMap((col, ci) =>
     col.activities
@@ -61,7 +68,8 @@ export async function setupTripTracker(payload: TrackerPayload): Promise<void> {
       .map(({ col, ci, ai, activity }) => ({
         collectionIndex: ci,
         collectionName: col.name,
-        color: col.color,
+        activityLabel: `${col.name} #${ai + 1}`,
+        color: activity.color,
         activityIndex: ai,
         livetrackUrl: activity.livetrackUrl,
         notes: activity.notes,
@@ -69,7 +77,13 @@ export async function setupTripTracker(payload: TrackerPayload): Promise<void> {
       })),
   );
 
-  visibleCollections = new Set(collections.map((_, i) => i));
+  const firstCollectionWithRoute = collections.findIndex((_, ci) =>
+    allRouteEntries.some((entry) => entry.collectionIndex === ci),
+  );
+  activeCollectionIndex =
+    firstCollectionWithRoute >= 0 ? firstCollectionWithRoute : collections.length > 0 ? 0 : null;
+  visibleCollections =
+    activeCollectionIndex === null ? new Set<number>() : new Set<number>([activeCollectionIndex]);
 
   const mapShell = getElement<HTMLDivElement>("map-shell");
   const placeholder = getElement<HTMLDivElement>("map-placeholder");
@@ -80,7 +94,7 @@ export async function setupTripTracker(payload: TrackerPayload): Promise<void> {
   }
 
   renderCollectionControls(collections);
-  renderActivityList(collections);
+  renderActivityList(collections, activeCollectionIndex);
   revokeGpxUrls();
 }
 
@@ -187,25 +201,26 @@ function getVisibleRouteEntries(): RouteEntry[] {
   return allRouteEntries.filter((e) => visibleCollections.has(e.collectionIndex));
 }
 
-function toggleCollection(collectionIndex: number): void {
-  if (!leafletState) {
+function selectCollection(collectionIndex: number): void {
+  if (!leafletState || !trackerCollections[collectionIndex]) {
     return;
   }
 
-  if (visibleCollections.has(collectionIndex)) {
-    visibleCollections.delete(collectionIndex);
-    leafletState.collectionGroups.get(collectionIndex)?.remove();
-  } else {
-    visibleCollections.add(collectionIndex);
-    const group = leafletState.collectionGroups.get(collectionIndex);
-    if (group) {
+  activeCollectionIndex = collectionIndex;
+  visibleCollections = new Set([collectionIndex]);
+
+  leafletState.collectionGroups.forEach((group, ci) => {
+    if (ci === collectionIndex) {
       group.addTo(leafletState.map);
+    } else {
+      group.remove();
     }
-  }
+  });
 
   const visible = getVisibleRouteEntries();
   updateMapStats(visible);
   renderGraphs(visible);
+  renderActivityList(trackerCollections, activeCollectionIndex);
   updateCollectionButtonStates();
 }
 
@@ -217,7 +232,9 @@ function updateCollectionButtonStates(): void {
 
   controls.querySelectorAll<HTMLButtonElement>("[data-collection-index]").forEach((btn) => {
     const ci = Number(btn.dataset.collectionIndex);
-    btn.classList.toggle("collection-btn--off", !visibleCollections.has(ci));
+    const selected = activeCollectionIndex === ci;
+    btn.classList.toggle("collection-btn--off", !selected);
+    btn.setAttribute("aria-selected", selected ? "true" : "false");
   });
 }
 
@@ -227,24 +244,22 @@ function renderCollectionControls(collections: TrackerCollection[]): void {
     return;
   }
 
-  const collectionsWithRoutes = collections.filter((col, ci) =>
-    allRouteEntries.some((e) => e.collectionIndex === ci),
-  );
-
-  if (collectionsWithRoutes.length < 2) {
+  if (collections.length < 2) {
     controls.classList.add("hidden");
     return;
   }
 
   controls.classList.remove("hidden");
-  controls.innerHTML = collectionsWithRoutes
-    .map((col, _unused, filteredCols) => {
-      const ci = collections.indexOf(col);
+  controls.innerHTML = collections
+    .map((col, ci) => {
+      const selected = activeCollectionIndex === ci;
       return `<button
         class="collection-btn"
+        role="tab"
+        aria-selected="${selected ? "true" : "false"}"
         data-collection-index="${ci}"
         style="--col-color:${escapeHtml(col.color)}"
-        aria-pressed="true"
+        type="button"
       >${escapeHtml(col.name)}</button>`;
     })
     .join("");
@@ -252,7 +267,7 @@ function renderCollectionControls(collections: TrackerCollection[]): void {
   controls.querySelectorAll<HTMLButtonElement>("[data-collection-index]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const ci = Number(btn.dataset.collectionIndex);
-      toggleCollection(ci);
+      selectCollection(ci);
     });
   });
 }
@@ -292,16 +307,20 @@ function hideMapStats(): void {
 }
 
 function renderGraphs(routes: RouteEntry[]): void {
-  const graphs = getElement<HTMLElement>("route-graphs");
-  const graphGrid = getElement<HTMLDivElement>("graph-grid");
+  const elevationGraph = getElement<HTMLElement>("elevation-graph");
+  const elevationCanvas = getElement<HTMLDivElement>("elevation-graph-canvas");
+  const speedGraphs = getElement<HTMLElement>("route-graphs");
+  const speedGrid = getElement<HTMLDivElement>("graph-grid");
 
-  if (!graphs || !graphGrid) {
+  if (!elevationGraph || !elevationCanvas || !speedGraphs || !speedGrid) {
     return;
   }
 
   if (routes.length === 0) {
-    graphs.classList.add("hidden");
-    graphGrid.innerHTML = "";
+    elevationGraph.classList.add("hidden");
+    elevationCanvas.innerHTML = "";
+    speedGraphs.classList.add("hidden");
+    speedGrid.innerHTML = "";
     return;
   }
 
@@ -322,19 +341,29 @@ function renderGraphs(routes: RouteEntry[]): void {
     return typeof derived === "number" ? { x: point.durationSecs, y: derived } : null;
   });
 
-  const cards: Array<{ title: string; xLabel: string; yLabel: string; series: ChartSeries[]; baselineAtZero: boolean; xFormatter: (v: number) => string; yFormatter: (v: number) => string }> = [];
-
   if (elevationSeries.length > 0) {
-    cards.push({
-      title: "Elevation",
-      xLabel: "Distance",
-      yLabel: "Metres",
-      series: elevationSeries,
-      baselineAtZero: false,
-      xFormatter: formatDistance,
-      yFormatter: (v) => `${Math.round(v)} m`,
-    });
+    elevationCanvas.innerHTML = `
+      <article class="graph-card graph-card--full">
+        <div class="graph-card-header">
+          <h3>Elevation</h3>
+          <span class="graph-axis-label">Distance → Metres</span>
+        </div>
+        <div class="graph-canvas">${buildLineChartSvg({
+          series: elevationSeries,
+          xFormatter: formatDistance,
+          yFormatter: (v) => `${Math.round(v)} m`,
+          baselineAtZero: false,
+          xLabel: "Distance",
+          yLabel: "Metres",
+        })}</div>
+      </article>`;
+    elevationGraph.classList.remove("hidden");
+  } else {
+    elevationGraph.classList.add("hidden");
+    elevationCanvas.innerHTML = "";
   }
+
+  const cards: Array<{ title: string; xLabel: string; yLabel: string; series: ChartSeries[]; baselineAtZero: boolean; xFormatter: (v: number) => string; yFormatter: (v: number) => string }> = [];
 
   if (speedSeries.length > 0) {
     cards.push({
@@ -349,12 +378,12 @@ function renderGraphs(routes: RouteEntry[]): void {
   }
 
   if (cards.length === 0) {
-    graphs.classList.add("hidden");
-    graphGrid.innerHTML = "";
+    speedGraphs.classList.add("hidden");
+    speedGrid.innerHTML = "";
     return;
   }
 
-  graphGrid.innerHTML = cards
+  speedGrid.innerHTML = cards
     .map(
       (card) => `
       <article class="graph-card">
@@ -362,22 +391,37 @@ function renderGraphs(routes: RouteEntry[]): void {
           <h3>${escapeHtml(card.title)}</h3>
           <span class="graph-axis-label">${escapeHtml(card.xLabel)} → ${escapeHtml(card.yLabel)}</span>
         </div>
-        <div class="graph-canvas">${buildLineChartSvg({ series: card.series, xFormatter: card.xFormatter, yFormatter: card.yFormatter, baselineAtZero: card.baselineAtZero })}</div>
+        <div class="graph-canvas">${buildLineChartSvg({
+          series: card.series,
+          xFormatter: card.xFormatter,
+          yFormatter: card.yFormatter,
+          baselineAtZero: card.baselineAtZero,
+          xLabel: card.xLabel,
+          yLabel: card.yLabel,
+        })}</div>
       </article>`,
     )
     .join("");
 
-  graphs.classList.remove("hidden");
+  speedGraphs.classList.remove("hidden");
 }
 
 function hideGraphs(): void {
-  const graphs = getElement<HTMLElement>("route-graphs");
-  const graphGrid = getElement<HTMLDivElement>("graph-grid");
-  if (graphs) {
-    graphs.classList.add("hidden");
+  const elevationGraph = getElement<HTMLElement>("elevation-graph");
+  const elevationCanvas = getElement<HTMLDivElement>("elevation-graph-canvas");
+  const speedGraphs = getElement<HTMLElement>("route-graphs");
+  const speedGrid = getElement<HTMLDivElement>("graph-grid");
+  if (elevationGraph) {
+    elevationGraph.classList.add("hidden");
   }
-  if (graphGrid) {
-    graphGrid.innerHTML = "";
+  if (elevationCanvas) {
+    elevationCanvas.innerHTML = "";
+  }
+  if (speedGraphs) {
+    speedGraphs.classList.add("hidden");
+  }
+  if (speedGrid) {
+    speedGrid.innerHTML = "";
   }
 }
 
@@ -402,11 +446,12 @@ function buildCombinedSeries(
     }
 
     const xMax = rawPoints.at(-1)!.x;
-    const offsetPoints = rawPoints.map((p) => ({ x: p.x + xOffset, y: p.y }));
+    const offsetPoints = rawPoints.map((p) => ({ x: p.x + xOffset, displayX: p.x, y: p.y }));
 
     result.push({
       color: entry.color,
-      label: entry.collectionName,
+      label: entry.activityLabel,
+      xTotal: xMax,
       points: offsetPoints,
     });
 
@@ -442,8 +487,10 @@ function buildLineChartSvg(options: {
   xFormatter: (value: number) => string;
   yFormatter: (value: number) => string;
   baselineAtZero: boolean;
+  xLabel: string;
+  yLabel: string;
 }): string {
-  const { series, xFormatter, yFormatter, baselineAtZero } = options;
+  const { series, xFormatter, yFormatter, baselineAtZero, xLabel, yLabel } = options;
   const width = 680;
   const height = 240;
   const padding = { top: 16, right: 16, bottom: 34, left: 48 };
@@ -479,6 +526,20 @@ function buildLineChartSvg(options: {
     })
     .join("");
 
+  const hoverPoints = series
+    .map((s) =>
+      s.points
+        .map((p) => {
+          const tooltip = `${s.label}
+Current ${xLabel}: ${xFormatter(p.displayX ?? p.x)}
+Current ${yLabel}: ${yFormatter(p.y)}
+Total ${xLabel}: ${xFormatter(s.xTotal)}`;
+          return `<circle cx="${scaleX(p.x).toFixed(2)}" cy="${scaleY(p.y).toFixed(2)}" r="5" fill="${escapeHtml(s.color)}" fill-opacity="0.001"><title>${escapeXml(tooltip)}</title></circle>`;
+        })
+        .join(""),
+    )
+    .join("");
+
   const uniqueLabels = [...new Map(series.map((s) => [s.label, s])).values()];
   const legend = uniqueLabels
     .map(
@@ -497,6 +558,7 @@ function buildLineChartSvg(options: {
         <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" class="graph-axis" />
         <line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" class="graph-axis" />
         ${paths}
+        ${hoverPoints}
         <text x="${padding.left}" y="${padding.top - 2}" class="graph-label">${escapeHtml(yFormatter(yMax))}</text>
         <text x="${padding.left}" y="${height - padding.bottom + 26}" class="graph-label">${escapeHtml(xFormatter(xMin))}</text>
         <text x="${width - padding.right}" y="${height - padding.bottom + 26}" text-anchor="end" class="graph-label">${escapeHtml(xFormatter(xMax))}</text>
@@ -506,7 +568,7 @@ function buildLineChartSvg(options: {
     </svg>`;
 }
 
-function renderActivityList(collections: TrackerCollection[]): void {
+function renderActivityList(collections: TrackerCollection[], selectedCollectionIndex: number | null): void {
   const activityList = getElement<HTMLDivElement>("activity-list");
   if (!activityList) {
     return;
@@ -514,24 +576,24 @@ function renderActivityList(collections: TrackerCollection[]): void {
 
   const cards = collections
     .flatMap((col, ci) =>
-      col.activities.map((activity, ai) => {
-        const entry = allRouteEntries.find((e) => e.collectionIndex === ci && e.activityIndex === ai);
-        const gpxHref = entry ? buildGpxDownloadUrl(entry.routeData.points, `${col.name} #${ai + 1}`) : null;
+      (selectedCollectionIndex === null || selectedCollectionIndex === ci ? col.activities : []).map(
+        (activity, ai) => {
+          const entry = allRouteEntries.find((e) => e.collectionIndex === ci && e.activityIndex === ai);
+          const gpxHref = entry ? buildGpxDownloadUrl(entry.routeData.points, `${col.name} #${ai + 1}`) : null;
+          const statusText = getActivityStatusLabel(activity.routeData, activity.livetrackUrl);
+          const metrics = entry ? renderActivityMetrics(entry.routeData) : "";
+          const notes = activity.notes ? `<p class="activity-notes">${escapeHtml(activity.notes)}</p>` : "";
+          const garminLink = activity.livetrackUrl
+            ? `<a class="button-link" href="${escapeHtml(activity.livetrackUrl)}" target="_blank" rel="noreferrer">Open in Garmin</a>`
+            : "";
+          const gpxLink = gpxHref
+            ? `<a class="button-link button-link-secondary" href="${gpxHref}" download="${slugify(col.name)}-${ai + 1}.gpx">Download GPX</a>`
+            : "";
 
-        const statusText = getActivityStatusLabel(activity.routeData, activity.livetrackUrl);
-        const metrics = entry ? renderActivityMetrics(entry.routeData) : "";
-        const notes = activity.notes ? `<p class="activity-notes">${escapeHtml(activity.notes)}</p>` : "";
-        const garminLink = activity.livetrackUrl
-          ? `<a class="button-link" href="${escapeHtml(activity.livetrackUrl)}" target="_blank" rel="noreferrer">Open in Garmin</a>`
-          : "";
-        const gpxLink = gpxHref
-          ? `<a class="button-link button-link-secondary" href="${gpxHref}" download="${slugify(col.name)}-${ai + 1}.gpx">Download GPX</a>`
-          : "";
-
-        return `
+          return `
           <article class="activity-card">
             <div class="activity-card__header">
-              <span class="activity-swatch" style="background:${escapeHtml(col.color)}"></span>
+              <span class="activity-swatch" style="background:${escapeHtml(activity.color)}"></span>
               <div>
                 <p class="activity-collection">${escapeHtml(col.name)}</p>
                 <p class="activity-status">${escapeHtml(statusText)}</p>
@@ -541,7 +603,8 @@ function renderActivityList(collections: TrackerCollection[]): void {
             ${metrics}
             <div class="activity-actions">${gpxLink}${garminLink}</div>
           </article>`;
-      }),
+        },
+      ),
     )
     .join("");
 
