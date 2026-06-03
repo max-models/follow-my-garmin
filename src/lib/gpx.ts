@@ -11,7 +11,12 @@ export interface PlannedRouteData {
   points: PlannedRoutePoint[];
 }
 
-export type PlannedRouteDataByCollection = Record<number, Record<number, PlannedRouteData>>;
+export interface CollectionPlannedRouteData {
+  collectionGpx: PlannedRouteData | null;
+  activityGpx: Record<number, PlannedRouteData>;
+}
+
+export type PlannedRouteDataByCollection = Record<number, CollectionPlannedRouteData>;
 
 export async function loadPlannedRouteData(collections: Collection[]): Promise<PlannedRouteDataByCollection> {
   const result: PlannedRouteDataByCollection = {};
@@ -19,7 +24,20 @@ export async function loadPlannedRouteData(collections: Collection[]): Promise<P
 
   for (let ci = 0; ci < collections.length; ci++) {
     const collection = collections[ci];
-    result[ci] = {};
+    result[ci] = { collectionGpx: null, activityGpx: {} };
+
+    const colGpxPath = normalizeGpxPath(collection.routeGpxFile, rootDir);
+    if (colGpxPath) {
+      try {
+        const content = await readFile(colGpxPath, "utf-8");
+        const points = parseGpxTrackPoints(content);
+        if (points.length > 1) {
+          result[ci].collectionGpx = { points };
+        }
+      } catch (e) {
+        console.warn(`[gpx] Could not load collection GPX ${collection.routeGpxFile}: ${e}`);
+      }
+    }
 
     for (let ai = 0; ai < collection.activities.length; ai++) {
       const activity = collection.activities[ai];
@@ -32,7 +50,7 @@ export async function loadPlannedRouteData(collections: Collection[]): Promise<P
         const gpxContent = await readFile(filePath, "utf-8");
         const points = parseGpxTrackPoints(gpxContent);
         if (points.length > 1) {
-          result[ci][ai] = { points };
+          result[ci].activityGpx[ai] = { points };
         }
       } catch (error) {
         const detail = error instanceof Error ? error.message : "Unknown GPX load error.";

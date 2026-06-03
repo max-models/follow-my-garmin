@@ -73,10 +73,16 @@ code {
   margin-top: 1rem;
   padding: 1rem 1.25rem;
   border-radius: 8px;
-  border: 1px solid rgba(251, 191, 36, 0.25);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.1);
+  color: #92400e;
+  line-height: 1.6;
+}
+
+[data-theme="dark"] .empty-state {
+  border-color: rgba(251, 191, 36, 0.25);
   background: rgba(251, 191, 36, 0.06);
   color: #fde68a;
-  line-height: 1.6;
 }
 
 /* ── Collection toggle buttons ── */
@@ -347,6 +353,11 @@ code {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  background: rgba(239, 68, 68, 0.1);
+  color: #e11d48;
+}
+
+[data-theme="dark"] .activity-live-pill {
   background: rgba(239, 68, 68, 0.14);
   color: #fda4af;
 }
@@ -356,6 +367,32 @@ code {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.85rem;
+}
+
+/* ── Theme Toggle ── */
+
+.theme-toggle {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 140ms ease;
+}
+
+.theme-toggle:hover {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.site-header {
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 /* ── Buttons ── */
@@ -381,6 +418,10 @@ code {
 .button-link-secondary {
   background: transparent;
   border: 1px solid rgba(96, 165, 250, 0.4);
+  color: #2563eb;
+}
+
+[data-theme="dark"] .button-link-secondary {
   color: #bfdbfe;
 }
 
@@ -401,3 +442,4 @@ code {
     min-height: 340px;
   }
 }
+

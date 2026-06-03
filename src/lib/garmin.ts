@@ -86,7 +86,7 @@ export type GarminRouteData = GarminRouteOk | GarminRouteEmpty | GarminRouteErro
 // routeData[collectionIndex][activityIndex]
 export type GarminRouteDataByCollection = Record<number, Record<number, GarminRouteData>>;
 
-const GARMIN_HOST = "livetrack.garmin.com";
+const GARMIN_HOSTS = ["livetrack.garmin.com", "connect.garmin.com"];
 const hydrationPattern = /self\.__next_f\.push\(\[1,("(?:\\.|[^"\\])*")\]\)/gs;
 
 export function normalizeGarminUrl(url?: string | null): string | null {
@@ -97,13 +97,18 @@ export function normalizeGarminUrl(url?: string | null): string | null {
   try {
     const parsed = new URL(url);
 
-    if (
-      parsed.protocol !== "https:" ||
-      parsed.hostname !== GARMIN_HOST ||
-      !parsed.pathname.startsWith("/session/") ||
-      !parsed.pathname.includes("/token/")
-    ) {
+    if (parsed.protocol !== "https:" || !GARMIN_HOSTS.includes(parsed.hostname)) {
       return null;
+    }
+
+    if (parsed.hostname === "livetrack.garmin.com") {
+      if (!parsed.pathname.startsWith("/session/") || !parsed.pathname.includes("/token/")) {
+        return null;
+      }
+    } else if (parsed.hostname === "connect.garmin.com") {
+      if (!parsed.pathname.includes("/activity/")) {
+        return null;
+      }
     }
 
     return parsed.toString();
@@ -121,7 +126,8 @@ export async function loadRouteData(collections: Collection[]): Promise<GarminRo
 
     for (let ai = 0; ai < collection.activities.length; ai++) {
       const activity = collection.activities[ai];
-      const url = normalizeGarminUrl(activity.livetrackUrl);
+      const sourceUrl = activity.garminConnectUrl || activity.garminLivetrackUrl;
+      const url = normalizeGarminUrl(sourceUrl);
       if (!url) {
         continue;
       }
@@ -135,6 +141,11 @@ export async function loadRouteData(collections: Collection[]): Promise<GarminRo
 
 async function extractGarminRoute(sourceUrl: string, label: string): Promise<GarminRouteData> {
   const extractedAt = new Date().toISOString();
+  const url = new URL(sourceUrl);
+
+  if (url.hostname === "connect.garmin.com") {
+    return extractGarminConnectActivity(sourceUrl, label, extractedAt);
+  }
 
   try {
     const response = await fetch(sourceUrl);
@@ -143,7 +154,7 @@ async function extractGarminRoute(sourceUrl: string, label: string): Promise<Gar
         status: "fetch_error",
         sourceUrl,
         extractedAt,
-        errorDetail: `Garmin returned ${response.status} ${response.statusText} for ${label}.`,
+        errorDetail: `Garmin returned ${response.status} ${response.statusText} for activity: ${label}.`,
       };
       console.warn(`[garmin] ${result.errorDetail}`);
       return result;
@@ -156,7 +167,7 @@ async function extractGarminRoute(sourceUrl: string, label: string): Promise<Gar
         status: "parse_error",
         sourceUrl,
         extractedAt,
-        errorDetail: parsed.errorDetail,
+        errorDetail: `${parsed.errorDetail} (Activity: ${label})`,
       };
       console.warn(`[garmin] ${result.errorDetail}`);
       return result;
@@ -195,16 +206,167 @@ async function extractGarminRoute(sourceUrl: string, label: string): Promise<Gar
   }
 }
 
+async function extractGarminConnectActivity(
+  sourceUrl: string,
+  label: string,
+  extractedAt: string,
+): Promise<GarminRouteData> {
+  // Activity ID is the last numeric part of the path
+  const activityId = sourceUrl.split("/").filter(Boolean).at(-1);
+  if (!activityId || !/^\d+$/.test(activityId)) {
+    return {
+      status: "parse_error",
+      sourceUrl,
+      extractedAt,
+      errorDetail: "Invalid Garmin Connect activity ID.",
+    };
+  }
+
+  // Attempt to fetch from the public sharing endpoint
+  // This often works for public activities without auth
+  const shareUrl = `https://connect.garmin.com/gc-api/activity-service/activity/${activityId}/details?maxChartSize=2000&maxPolylineSize=4000`;
+
+  try {
+    const response = await fetch(shareUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Referer: sourceUrl,
+        "NK: NT": "NK",
+      },
+    });
+
+    if (!response.ok) {
+      // Fallback: search for metadata in HTML if details API fails
+      return extractSummaryFromConnectHtml(sourceUrl, label, extractedAt);
+    }
+
+    const data = await response.json();
+    return parseConnectDetailsJson(data, sourceUrl, extractedAt);
+  } catch (e) {
+    return extractSummaryFromConnectHtml(sourceUrl, label, extractedAt);
+  }
+}
+
+async function extractSummaryFromConnectHtml(
+  sourceUrl: string,
+  label: string,
+  extractedAt: string,
+): Promise<GarminRouteData> {
+  try {
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      throw new Error(`Status ${response.status}`);
+    }
+    const html = await response.text();
+
+    // Extract basic info from meta tags
+    const latMatch = html.match(/property="og:latitude" content="([^"]+)"/);
+    const lonMatch = html.match(/property="og:longitude" content="([^"]+)"/);
+    const titleMatch = html.match(/property="og:title" content="([^"]+)"/);
+
+    if (latMatch && lonMatch) {
+      const lat = parseFloat(latMatch[1]);
+      const lon = parseFloat(lonMatch[1]);
+      const point: GarminTrackPoint = { lat, lon, time: extractedAt };
+
+      return {
+        status: "ok",
+        sourceUrl,
+        extractedAt,
+        sessionName: titleMatch ? titleMatch[1] : "Garmin Connect Activity",
+        points: [point],
+        summary: {
+          pointCount: 1,
+          lastReportedTime: extractedAt,
+          isActive: false,
+        },
+      };
+    }
+
+    return {
+      status: "empty",
+      sourceUrl,
+      extractedAt,
+    };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : "Unknown error.";
+    return {
+      status: "fetch_error",
+      sourceUrl,
+      extractedAt,
+      errorDetail: `Could not load Garmin Connect activity ${label}: ${detail}. Public activities may require a different share link or manual GPX upload.`,
+    };
+  }
+}
+
+function parseConnectDetailsJson(data: any, sourceUrl: string, extractedAt: string): GarminRouteData {
+  if (!data || !data.activityDetailMetrics) {
+    return { status: "empty", sourceUrl, extractedAt };
+  }
+
+  const descriptors: any[] = data.metricDescriptors || [];
+  const metrics: any[][] = data.activityDetailMetrics || [];
+
+  const latIdx = descriptors.findIndex((d) => d.key === "directLatitude");
+  const lonIdx = descriptors.findIndex((d) => d.key === "directLongitude");
+  const eleIdx = descriptors.findIndex((d) => d.key === "directElevation" || d.key === "sumElevation");
+  const timeIdx = descriptors.findIndex((d) => d.key === "directTimestamp");
+  const distIdx = descriptors.findIndex((d) => d.key === "sumDistance");
+  const speedIdx = descriptors.findIndex((d) => d.key === "directSpeed");
+  const hrIdx = descriptors.findIndex((d) => d.key === "directHeartRate");
+  const pwrIdx = descriptors.findIndex((d) => d.key === "directPower");
+  const cadIdx = descriptors.findIndex((d) => d.key === "directCadence");
+
+  const points: GarminTrackPoint[] = [];
+
+  for (const m of metrics) {
+    const lat = m[latIdx];
+    const lon = m[lonIdx];
+    if (typeof lat !== "number" || typeof lon !== "number") continue;
+
+    points.push({
+      lat,
+      lon,
+      elevation: typeof m[eleIdx] === "number" ? m[eleIdx] : undefined,
+      time: typeof m[timeIdx] === "number" ? new Date(m[timeIdx]).toISOString() : undefined,
+      distanceMeters: typeof m[distIdx] === "number" ? m[distIdx] : undefined,
+      speedMetersPerSec: typeof m[speedIdx] === "number" ? m[speedIdx] : undefined,
+      heartRateBeatsPerMin: typeof m[hrIdx] === "number" ? m[hrIdx] : undefined,
+      powerWatts: typeof m[pwrIdx] === "number" ? m[pwrIdx] : undefined,
+      cadenceCyclesPerMin: typeof m[cadIdx] === "number" ? m[cadIdx] : undefined,
+    });
+  }
+
+  if (points.length === 0) {
+    return { status: "empty", sourceUrl, extractedAt };
+  }
+
+  return {
+    status: "ok",
+    sourceUrl,
+    extractedAt,
+    sessionName: data.activityName || "Garmin Connect Activity",
+    points,
+    summary: {
+      pointCount: points.length,
+      totalDistanceMeters: points.at(-1)?.distanceMeters,
+      lastReportedTime: points.at(-1)?.time,
+      isActive: false,
+    },
+  };
+}
+
 function parseTrackDataFromHtml(
   html: string,
 ): { points: GarminTrackPointSource[]; session: GarminSessionData } | { errorDetail: string } {
+  let trackQuery: GarminHydratedQuery | undefined;
+  let sessionQuery: GarminHydratedQuery | undefined;
+
   for (const match of html.matchAll(hydrationPattern)) {
     try {
       const decoded = JSON.parse(match[1]) as string;
-      if (!decoded.includes('"track-points"')) {
-        continue;
-      }
-
+      
       const payloadSeparator = decoded.indexOf(":");
       if (payloadSeparator === -1) {
         continue;
@@ -225,25 +387,38 @@ function parseTrackDataFromHtml(
         continue;
       }
 
-      const trackQuery = queries.find((query) => query.queryKey?.at(-1) === "track-points");
-      const sessionQuery = queries.find(
-        (query) => Array.isArray(query.queryKey) && query.queryKey[0] === "session" && query.queryKey.length === 3,
-      );
-
-      const trackPages = asTrackPages(trackQuery?.state?.data);
-      const session = asSessionData(sessionQuery?.state?.data);
-
-      return {
-        points: trackPages.flatMap((page) => page.trackPoints ?? []),
-        session,
-      };
+      if (!trackQuery) {
+        trackQuery = queries.find((query) => query.queryKey?.at(-1) === "track-points");
+      }
+      if (!sessionQuery) {
+        sessionQuery = queries.find(
+          (query) => Array.isArray(query.queryKey) && query.queryKey[0] === "session" && query.queryKey.length === 3,
+        );
+      }
     } catch {
       continue;
     }
   }
 
+  if (sessionQuery) {
+    const session = asSessionData(sessionQuery.state?.data);
+    const trackPages = trackQuery ? asTrackPages(trackQuery.state?.data) : [];
+    const points = trackPages.flatMap((page) => page.trackPoints ?? []);
+
+    // If no track points, but we have a session position, use that as a fallback point
+    if (points.length === 0 && session.position) {
+      points.push({
+        position: session.position,
+        dateTime: session.end || session.start,
+        reportedTime: session.end || session.start,
+      });
+    }
+
+    return { points, session };
+  }
+
   return {
-    errorDetail: "Could not find Garmin track points in the hydration payload.",
+    errorDetail: "Could not find Garmin session data in the hydration payload.",
   };
 }
 

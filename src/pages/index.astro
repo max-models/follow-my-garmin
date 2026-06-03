@@ -28,12 +28,14 @@ const trackerPayload = {
   collections: collectionsWithColors.map((col, ci) => ({
     name: col.name,
     color: col.color,
+    plannedRouteData: plannedRouteData[ci]?.collectionGpx ?? null,
     activities: col.activities.map((activity, ai) => ({
       color: activity.color,
-      livetrackUrl: activity.livetrackUrl ?? null,
+      garminConnectUrl: activity.garminConnectUrl ?? null,
+      garminLivetrackUrl: activity.garminLivetrackUrl ?? null,
       notes: activity.notes ?? null,
       routeData: routeData[ci]?.[ai] ?? null,
-      plannedRouteData: plannedRouteData[ci]?.[ai] ?? null,
+      plannedRouteData: plannedRouteData[ci]?.activityGpx[ai] ?? null,
     })),
   })),
 };
@@ -88,6 +90,41 @@ const trackerPayload = {
   </div>
 
   <script id="tracker-data" type="application/json" set:html={serializeDataForScript(trackerPayload)}></script>
+  <script>
+    import { setupTripTracker } from "../scripts/tracker";
+
+    const tripDataElement = document.getElementById("tracker-data");
+
+    if (tripDataElement?.textContent) {
+      void setupTripTracker(JSON.parse(tripDataElement.textContent));
+    }
+
+    const themeToggle = document.getElementById("theme-toggle");
+    const sunIcon = document.getElementById("sun-icon");
+    const moonIcon = document.getElementById("moon-icon");
+
+    function updateThemeIcons(theme: string) {
+      if (theme === "dark") {
+        sunIcon?.classList.remove("hidden");
+        moonIcon?.classList.add("hidden");
+      } else {
+        sunIcon?.classList.add("hidden");
+        moonIcon?.classList.remove("hidden");
+      }
+    }
+
+    const currentTheme = document.documentElement.getAttribute("data-theme") || "light";
+    updateThemeIcons(currentTheme);
+
+    themeToggle?.addEventListener("click", () => {
+      const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+      localStorage.setItem("theme", theme);
+      updateThemeIcons(theme);
+    });
+  </script>
+</BaseLayout>
+pt(trackerPayload)}></script>
   <script>
     import { setupTripTracker } from "../scripts/tracker";
 

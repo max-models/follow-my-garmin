@@ -1,11 +1,13 @@
 export interface CollectionActivity {
-  livetrackUrl?: string | null;
+  garminConnectUrl?: string | null;
+  garminLivetrackUrl?: string | null;
   notes?: string;
   routeGpxFile?: string | null;
 }
 
 export interface Collection {
   name: string;
+  routeGpxFile?: string | null;
   activities: CollectionActivity[];
 }
 
