@@ -9,13 +9,14 @@ An Astro website for a bikepacking trip where the Garmin LiveTrack URL can chang
 - The browser picks the current day from the visitor's local date.
 - If there is no entry for today yet, the site falls back to the most recent day with a Garmin link.
 - During the Astro build, the site fetches Garmin LiveTrack HTML and extracts track points into its own route data.
-- The browser renders those extracted points on its own map and offers a GPX download for the selected day.
+- The browser renders those extracted points on its own map, supports multiple activities with different colors, and offers a GPX download for each extracted activity.
+- Route graphs are rendered below the map, and active Garmin sessions also expose live metric charts such as heart rate, speed, power, cadence, and elevation when Garmin publishes that data.
 
 ## Edit the trip
 
 Update `src/data/trip.ts` and redeploy the site.
 
-Each day entry looks like this:
+Each day entry can look like this:
 
 ```ts
 {
@@ -23,8 +24,22 @@ Each day entry looks like this:
   title: "Day 4 - Border crossing",
   location: "Village A to Village B",
   status: "planned",
-  livetrackUrl: null,
-  notes: "Optional notes for followers."
+  notes: "Optional notes for followers.",
+  activities: [
+    {
+      id: "morning-route",
+      title: "Morning route",
+      color: "#60a5fa",
+      livetrackUrl: null,
+      notes: "Optional activity notes."
+    },
+    {
+      id: "afternoon-route",
+      title: "Afternoon route",
+      color: "#f97316",
+      livetrackUrl: null
+    }
+  ]
 }
 ```
 
@@ -36,15 +51,17 @@ Each day entry looks like this:
 | `title` | Yes | Short label for the day. |
 | `location` | No | Route summary or destination. |
 | `status` | No | Allowed values are `planned`, `riding`, `finished`, `rest day`, and `cancelled`. |
-| `livetrackUrl` | No | Set this to the Garmin LiveTrack URL once Garmin has created that day's session. Leave it `null` until then. |
 | `notes` | No | Optional context shown on the page. |
+| `activities` | No | Array of Garmin activities for the day. Each activity should have `id`, `title`, `color`, and `livetrackUrl`. |
+| `livetrackUrl` | Legacy | Still works for a single-route day, but `activities` is the recommended format now. |
 
 ## Daily update workflow
 
-1. Add the new day in `src/data/trip.ts` ahead of time with `livetrackUrl: null`.
-2. Once the ride starts and Garmin creates the session, paste the new LiveTrack URL into that day's `livetrackUrl`.
-3. Optionally update the day's `status` from `planned` to `riding`.
-4. Push to `main` to trigger the GitHub Pages deployment workflow.
+1. Add the new day in `src/data/trip.ts` ahead of time and define one or more `activities`.
+2. Once each ride starts and Garmin creates its session, paste the new LiveTrack URL into that activity's `livetrackUrl`.
+3. Pick a distinct `color` for each activity so the map and graphs stay readable.
+4. Optionally update the day's `status` from `planned` to `riding`.
+5. Push to `main` to trigger the GitHub Pages deployment workflow.
 
 ## Local development
 

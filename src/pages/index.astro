@@ -5,8 +5,8 @@ import { tripData } from "../data/trip";
 import { loadRouteDataByDate } from "../lib/garmin";
 import {
   formatLongDate,
+  getPrimaryGarminUrl,
   getLocalIsoDate,
-  normalizeGarminUrl,
   selectCurrentDay,
   serializeDataForScript,
   sortDays,
@@ -15,7 +15,7 @@ import {
 const sortedDays = sortDays(tripData.days);
 const initialSelection = selectCurrentDay(sortedDays, getLocalIsoDate());
 const initialDay = initialSelection.day;
-const initialUrl = normalizeGarminUrl(initialDay.livetrackUrl);
+const initialUrl = getPrimaryGarminUrl(initialDay);
 const routesByDate = await loadRouteDataByDate(sortedDays);
 const pageTitle = tripData.trip.title || "Follow My Garmin Trip";
 const pageDescription =
@@ -39,28 +39,18 @@ const trackerPayload = {
       <section class="panel panel-live" aria-labelledby="live-heading">
         <div class="panel-header">
           <div>
-            <p class="section-kicker">Current view</p>
-            <h2 id="live-heading">Today's live tracking</h2>
+            <p class="section-kicker">Trip overview</p>
+            <h2 id="live-heading">Trip tracks map</h2>
           </div>
-          <div class="action-links">
-            <a
-              id="gpx-link"
-              class:list={["button-link", "button-link-secondary", "hidden"]}
-              href="#"
-              download
-            >
-              Download GPX
-            </a>
-            <a
-              id="live-link"
-              class:list={["button-link", !initialUrl && "hidden"]}
-              href={initialUrl ?? "#"}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open in Garmin LiveTrack
-            </a>
-          </div>
+          <a
+            id="day-live-link"
+            class:list={["button-link", !initialUrl && "hidden"]}
+            href={initialUrl ?? "#"}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open current Garmin session
+          </a>
         </div>
 
         <div class="current-day-meta">
@@ -85,17 +75,18 @@ const trackerPayload = {
         <div id="live-placeholder" class="empty-state">
           {
             initialUrl
-              ? "Open the Garmin link below, or wait a moment while the page loads the extracted route onto the custom map."
-              : "Add today's Garmin LiveTrack URL in src/data/trip.ts once the ride has started, and this page will switch from the placeholder to the custom route map automatically."
+              ? "Open the Garmin link below, or wait a moment while the page loads every extracted track onto the combined trip map."
+              : "Add Garmin LiveTrack URLs in src/data/trip.ts once the ride has started, and this page will switch from the placeholder to the combined trip map automatically."
           }
         </div>
+
         <div id="map-stats" class="map-stats hidden">
           <div class="stat-card">
-            <span class="stat-label">Distance</span>
+            <span class="stat-label">Total distance</span>
             <strong id="stat-distance">-</strong>
           </div>
           <div class="stat-card">
-            <span class="stat-label">Duration</span>
+            <span class="stat-label">Total duration</span>
             <strong id="stat-duration">-</strong>
           </div>
           <div class="stat-card">
@@ -107,6 +98,21 @@ const trackerPayload = {
             <strong id="stat-points">-</strong>
           </div>
         </div>
+
+        <div id="activity-list" class="activity-list hidden"></div>
+
+        <section id="route-graphs" class="graphs hidden" aria-labelledby="graphs-heading">
+          <div class="graphs-header">
+            <div>
+              <p class="section-kicker">Route analysis</p>
+              <h3 id="graphs-heading">Graphs</h3>
+            </div>
+            <span id="graphs-live-pill" class="status-pill status-pill-live hidden">Live now</span>
+          </div>
+          <p id="graphs-context" class="graphs-context hidden"></p>
+          <div id="graph-grid" class="graph-grid"></div>
+        </section>
+
         <p id="current-day-notes" class:list={["notes", !initialDay.notes && "hidden"]}>
           {initialDay.notes}
         </p>

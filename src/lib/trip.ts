@@ -1,6 +1,7 @@
-import type { TripDay } from "../data/trip";
+import type { TripActivity, TripDay } from "../data/trip";
 
 const GARMIN_HOST = "livetrack.garmin.com";
+const ACTIVITY_COLORS = ["#60a5fa", "#f97316", "#22c55e", "#a855f7", "#eab308"];
 
 export interface CurrentSelection {
   day: TripDay;
@@ -42,19 +43,48 @@ export function isEmbeddableGarminUrl(url?: string | null): boolean {
   return Boolean(normalizeGarminUrl(url));
 }
 
+export function getDayActivities(day: TripDay): TripActivity[] {
+  if (Array.isArray(day.activities) && day.activities.length > 0) {
+    return day.activities.map((activity, index) => ({
+      ...activity,
+      color: activity.color || ACTIVITY_COLORS[index % ACTIVITY_COLORS.length],
+      livetrackUrl: activity.livetrackUrl ?? null,
+    }));
+  }
+
+  return [
+    {
+      id: "primary-route",
+      title: day.title || "Route",
+      color: ACTIVITY_COLORS[0],
+      livetrackUrl: day.livetrackUrl ?? null,
+      notes: day.notes,
+    },
+  ];
+}
+
+export function dayHasAnyUrl(day: TripDay): boolean {
+  return getDayActivities(day).some((activity) => isEmbeddableGarminUrl(activity.livetrackUrl));
+}
+
+export function getPrimaryGarminUrl(day: TripDay): string | null {
+  const firstMatchingActivity = getDayActivities(day).find((activity) => isEmbeddableGarminUrl(activity.livetrackUrl));
+  return normalizeGarminUrl(firstMatchingActivity?.livetrackUrl);
+}
+
 export function selectCurrentDay(days: TripDay[], todayIso: string): CurrentSelection {
   const todayMatch = days.find((day) => day.date === todayIso);
 
   if (todayMatch) {
     return {
       day: todayMatch,
-      reason: todayMatch.livetrackUrl
+      reason: dayHasAnyUrl(todayMatch)
         ? "Showing today's route."
         : "Today's Garmin session has not been added yet.",
     };
   }
 
-  const previousWithUrl = days.filter((day) => day.date <= todayIso && isEmbeddableGarminUrl(day.livetrackUrl)).at(-1);
+  const previousWithUrl = days.filter((day) => day.date <= todayIso && dayHasAnyUrl(day)).at(-1);
   if (previousWithUrl) {
     return {
       day: previousWithUrl,
@@ -62,7 +92,7 @@ export function selectCurrentDay(days: TripDay[], todayIso: string): CurrentSele
     };
   }
 
-  const latestWithUrl = days.filter((day) => isEmbeddableGarminUrl(day.livetrackUrl)).at(-1);
+  const latestWithUrl = days.filter((day) => dayHasAnyUrl(day)).at(-1);
   if (latestWithUrl) {
     return {
       day: latestWithUrl,

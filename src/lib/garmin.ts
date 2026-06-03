@@ -1,4 +1,5 @@
-import type { TripDay } from "../data/trip";
+import type { TripActivity, TripDay } from "../data/trip";
+import { getDayActivities } from "./trip";
 
 interface GarminHydratedQuery {
   queryKey?: unknown[];
@@ -9,16 +10,20 @@ interface GarminHydratedQuery {
 
 interface GarminSessionData {
   sessionName?: string;
-  position?: {
-    lat?: number;
-    lon?: number;
-  };
+  start?: string;
+  end?: string;
+  postTrackPointFrequency?: number;
 }
 
 interface GarminTrackPointSource {
   dateTime?: string;
   reportedTime?: string;
   altitude?: number;
+  speed?: number;
+  speedMetersPerSec?: number;
+  heartRateBeatsPerMin?: number;
+  cadenceCyclesPerMin?: number;
+  powerWatts?: number;
   totalDurationSecs?: number;
   durationSecs?: number;
   totalDistanceMeters?: number;
@@ -33,6 +38,10 @@ export interface GarminTrackPoint {
   lat: number;
   lon: number;
   elevation?: number;
+  speedMetersPerSec?: number;
+  heartRateBeatsPerMin?: number;
+  cadenceCyclesPerMin?: number;
+  powerWatts?: number;
   time?: string;
   reportedTime?: string;
   distanceMeters?: number;
@@ -46,6 +55,10 @@ export interface GarminRouteSummary {
   minimumAltitudeMeters?: number;
   maximumAltitudeMeters?: number;
   lastReportedTime?: string;
+  sessionStartTime?: string;
+  sessionEndTime?: string;
+  postTrackPointFrequencySecs?: number;
+  isActive: boolean;
 }
 
 interface GarminRouteBase {
@@ -70,34 +83,44 @@ export interface GarminRouteError extends GarminRouteBase {
 }
 
 export type GarminRouteData = GarminRouteOk | GarminRouteEmpty | GarminRouteError;
-export type GarminRouteDataByDate = Record<string, GarminRouteData>;
+export type GarminRouteDataByActivity = Record<string, GarminRouteData>;
+export type GarminRouteDataByDate = Record<string, GarminRouteDataByActivity>;
 
 const hydrationPattern = /self\.__next_f\.push\(\[1,("(?:\\.|[^"\\])*")\]\)/gs;
 
 export async function loadRouteDataByDate(days: TripDay[]): Promise<GarminRouteDataByDate> {
-  const entries = await Promise.all(
-    days
-      .filter((day) => day.livetrackUrl)
-      .map(async (day) => [
-        day.date,
-        await extractGarminRoute(day.livetrackUrl as string),
-      ] as const),
-  );
+  const routesByDate: GarminRouteDataByDate = {};
 
-  return Object.fromEntries(entries);
+  for (const day of days) {
+    const activities = getDayActivities(day).filter((activity) => activity.livetrackUrl);
+    if (activities.length === 0) {
+      continue;
+    }
+
+    const activityRoutes: GarminRouteDataByActivity = {};
+
+    for (const activity of activities) {
+      activityRoutes[activity.id] = await extractGarminRoute(activity);
+    }
+
+    routesByDate[day.date] = activityRoutes;
+  }
+
+  return routesByDate;
 }
 
-export async function extractGarminRoute(url: string): Promise<GarminRouteData> {
+async function extractGarminRoute(activity: TripActivity): Promise<GarminRouteData> {
   const extractedAt = new Date().toISOString();
+  const sourceUrl = activity.livetrackUrl ?? "";
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(sourceUrl);
     if (!response.ok) {
       const result: GarminRouteError = {
         status: "fetch_error",
-        sourceUrl: url,
+        sourceUrl,
         extractedAt,
-        errorDetail: `Garmin returned ${response.status} ${response.statusText}.`,
+        errorDetail: `Garmin returned ${response.status} ${response.statusText} for ${activity.id}.`,
       };
       console.warn(`[garmin] ${result.errorDetail}`);
       return result;
@@ -108,7 +131,7 @@ export async function extractGarminRoute(url: string): Promise<GarminRouteData> 
     if ("errorDetail" in parsed) {
       const result: GarminRouteError = {
         status: "parse_error",
-        sourceUrl: url,
+        sourceUrl,
         extractedAt,
         errorDetail: parsed.errorDetail,
       };
@@ -116,40 +139,31 @@ export async function extractGarminRoute(url: string): Promise<GarminRouteData> 
       return result;
     }
 
-    const { points, session } = parsed;
-    if (points.length === 0) {
-      return {
-        status: "empty",
-        sourceUrl: url,
-        extractedAt,
-      };
-    }
-
-    const normalizedPoints = points
+    const normalizedPoints = parsed.points
       .map((point) => normalizeTrackPoint(point))
       .filter((point): point is GarminTrackPoint => point !== null);
 
     if (normalizedPoints.length === 0) {
       return {
         status: "empty",
-        sourceUrl: url,
+        sourceUrl,
         extractedAt,
       };
     }
 
     return {
       status: "ok",
-      sourceUrl: url,
+      sourceUrl,
       extractedAt,
-      sessionName: session.sessionName,
+      sessionName: parsed.session.sessionName,
       points: normalizedPoints,
-      summary: buildRouteSummary(normalizedPoints),
+      summary: buildRouteSummary(normalizedPoints, parsed.session, extractedAt),
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown Garmin fetch error.";
     const result: GarminRouteError = {
       status: "fetch_error",
-      sourceUrl: url,
+      sourceUrl,
       extractedAt,
       errorDetail: detail,
     };
@@ -239,6 +253,18 @@ function normalizeTrackPoint(point: GarminTrackPointSource): GarminTrackPoint | 
     lat,
     lon,
     elevation: typeof point.altitude === "number" ? point.altitude : undefined,
+    speedMetersPerSec:
+      typeof point.speedMetersPerSec === "number"
+        ? point.speedMetersPerSec
+        : typeof point.speed === "number"
+          ? point.speed
+          : undefined,
+    heartRateBeatsPerMin:
+      typeof point.heartRateBeatsPerMin === "number" && point.heartRateBeatsPerMin > 0
+        ? point.heartRateBeatsPerMin
+        : undefined,
+    cadenceCyclesPerMin: typeof point.cadenceCyclesPerMin === "number" ? point.cadenceCyclesPerMin : undefined,
+    powerWatts: typeof point.powerWatts === "number" ? point.powerWatts : undefined,
     time: point.dateTime,
     reportedTime: point.reportedTime,
     distanceMeters:
@@ -256,18 +282,56 @@ function normalizeTrackPoint(point: GarminTrackPointSource): GarminTrackPoint | 
   };
 }
 
-function buildRouteSummary(points: GarminTrackPoint[]): GarminRouteSummary {
-  const altitudes = points
-    .map((point) => point.elevation)
-    .filter((value): value is number => typeof value === "number");
-  const lastPoint = points.at(-1);
+function buildRouteSummary(
+ points: GarminTrackPoint[],
+ session: GarminSessionData,
+ extractedAt: string,
+): GarminRouteSummary {
+ const altitudes = points
+   .map((point) => point.elevation)
+   .filter((value): value is number => typeof value === "number");
+ const lastPoint = points.at(-1);
+ const lastReportedTime = lastPoint?.reportedTime ?? lastPoint?.time;
 
-  return {
-    pointCount: points.length,
-    totalDistanceMeters: lastPoint?.distanceMeters,
-    totalDurationSecs: lastPoint?.durationSecs,
-    minimumAltitudeMeters: altitudes.length > 0 ? Math.min(...altitudes) : undefined,
-    maximumAltitudeMeters: altitudes.length > 0 ? Math.max(...altitudes) : undefined,
-    lastReportedTime: lastPoint?.reportedTime ?? lastPoint?.time,
-  };
+ return {
+   pointCount: points.length,
+   totalDistanceMeters: lastPoint?.distanceMeters,
+   totalDurationSecs: lastPoint?.durationSecs,
+   minimumAltitudeMeters: altitudes.length > 0 ? Math.min(...altitudes) : undefined,
+   maximumAltitudeMeters: altitudes.length > 0 ? Math.max(...altitudes) : undefined,
+   lastReportedTime,
+   sessionStartTime: session.start,
+   sessionEndTime: session.end,
+   postTrackPointFrequencySecs: session.postTrackPointFrequency,
+   isActive: isSessionActive({
+     session,
+     lastReportedTime,
+     extractedAt,
+   }),
+ };
+}
+
+function isSessionActive(options: {
+ session: GarminSessionData;
+ lastReportedTime?: string;
+ extractedAt: string;
+}): boolean {
+ const { session, lastReportedTime, extractedAt } = options;
+ const extractedAtMs = Date.parse(extractedAt);
+ const startMs = session.start ? Date.parse(session.start) : Number.NaN;
+ const endMs = session.end ? Date.parse(session.end) : Number.NaN;
+ const lastReportedMs = lastReportedTime ? Date.parse(lastReportedTime) : Number.NaN;
+
+ if ([extractedAtMs, startMs, endMs, lastReportedMs].some((value) => Number.isNaN(value))) {
+   return false;
+ }
+
+ const frequencySecs = typeof session.postTrackPointFrequency === "number" ? session.postTrackPointFrequency : 15;
+ const freshnessWindowMs = Math.max(frequencySecs * 8_000, 10 * 60_000);
+
+ return (
+   extractedAtMs >= startMs &&
+   extractedAtMs <= endMs + freshnessWindowMs &&
+   extractedAtMs - lastReportedMs <= freshnessWindowMs
+ );
 }

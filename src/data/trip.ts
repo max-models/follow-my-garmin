@@ -6,6 +6,14 @@ export interface TripDetails {
   riderName?: string;
 }
 
+export interface TripActivity {
+  id: string;
+  title: string;
+  color: string;
+  livetrackUrl?: string | null;
+  notes?: string;
+}
+
 export interface TripDay {
   date: string;
   title: string;
@@ -13,6 +21,7 @@ export interface TripDay {
   status?: TripStatus;
   livetrackUrl?: string | null;
   notes?: string;
+  activities?: TripActivity[];
 }
 
 export interface TripData {
@@ -33,18 +42,39 @@ export const tripData = {
       title: "Day 1 - Departure",
       location: "Start town to first campsite",
       status: "riding",
-      livetrackUrl:
-        "https://livetrack.garmin.com/session/75d067c2-fde9-88e2-b508-6a9b61245200/token/647A34545C325599622E92BE268B2F8",
-      notes:
-        "Replace this sample with the Garmin LiveTrack link generated when you start riding.",
+      notes: "Replace these sample activities with the Garmin LiveTrack links generated when you start riding.",
+      activities: [
+        {
+          id: "morning-rollout",
+          title: "Morning rollout",
+          color: "#60a5fa",
+          livetrackUrl:
+            "https://livetrack.garmin.com/session/75d067c2-fde9-88e2-b508-6a9b61245200/token/647A34545C325599622E92BE268B2F8",
+          notes: "Sample route used to populate the custom map.",
+        },
+        {
+          id: "evening-spin",
+          title: "Evening spin",
+          color: "#f97316",
+          livetrackUrl: null,
+          notes: "Add a second Garmin session here if the day contains another activity.",
+        },
+      ],
     },
     {
       date: "2026-06-03",
       title: "Day 2 - Mountain pass",
       location: "Campsite to mountain village",
       status: "planned",
-      livetrackUrl: null,
-      notes: "Leave livetrackUrl empty until that day's Garmin session exists.",
+      notes: "Leave the activity URLs empty until those Garmin sessions exist.",
+      activities: [
+        {
+          id: "main-route",
+          title: "Main route",
+          color: "#22c55e",
+          livetrackUrl: null,
+        },
+      ],
     },
     {
       date: "2026-06-04",
@@ -52,7 +82,7 @@ export const tripData = {
       location: "Mountain village",
       status: "rest day",
       livetrackUrl: null,
-      notes: "Rest days can stay in the timeline without a Garmin embed.",
+      notes: "Rest days can stay in the timeline without any activity routes.",
     },
   ],
 } satisfies TripData;

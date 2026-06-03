@@ -53,7 +53,9 @@ a {
 
 .hero h1,
 .panel h2,
-.current-day-meta h3 {
+.panel h3,
+.activity-card h3,
+.graph-card h4 {
   margin: 0;
 }
 
@@ -72,7 +74,7 @@ a {
 
 .layout {
   width: 100%;
-  max-width: 780px;
+  max-width: 920px;
   margin: 0 auto;
 }
 
@@ -90,7 +92,8 @@ a {
 }
 
 .panel-header,
-.current-day-meta {
+.current-day-meta,
+.graphs-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
@@ -106,9 +109,6 @@ a {
   text-decoration: none;
   font-weight: 700;
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
-}
-
-.button-link {
   background: var(--accent-strong);
   color: white;
 }
@@ -123,13 +123,6 @@ a {
   transform: translateY(-1px);
 }
 
-.action-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: end;
-  gap: 0.75rem;
-}
-
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -142,6 +135,12 @@ a {
   font-size: 0.86rem;
   font-weight: 700;
   text-transform: capitalize;
+}
+
+.status-pill-live,
+.activity-live-pill {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fda4af;
 }
 
 .muted {
@@ -191,14 +190,17 @@ a {
   margin-top: 1rem;
 }
 
-.stat-card {
+.stat-card,
+.activity-card,
+.graph-card {
   padding: 0.95rem 1rem;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(15, 23, 42, 0.55);
 }
 
-.stat-label {
+.stat-label,
+.graph-axis-label {
   display: block;
   margin-bottom: 0.4rem;
   color: var(--muted);
@@ -211,19 +213,113 @@ a {
   font-size: 1rem;
 }
 
-.route-marker {
+.activity-list {
   display: grid;
-  place-items: center;
+  gap: 0.85rem;
+  margin-top: 1rem;
 }
 
-.route-marker__pin {
-  display: block;
+.activity-card__header,
+.activity-title-row,
+.activity-actions,
+.activity-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.activity-title-row {
+  align-items: start;
+}
+
+.activity-status,
+.activity-notes {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.activity-swatch {
+  display: inline-flex;
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  border: 2px solid white;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.25);
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+  margin-top: 0.25rem;
+}
+
+.activity-metrics {
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.activity-live-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-actions {
+  margin-top: 0.85rem;
+}
+
+.graphs {
+  margin-top: 1rem;
+}
+
+.graphs-context {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.graph-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.graph-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.graph-canvas {
+  min-height: 240px;
+}
+
+.graph-empty {
+  margin: 0;
+  padding: 0.5rem 0;
+  color: var(--muted);
+}
+
+.graph-svg {
+  width: 100%;
+  height: auto;
+}
+
+.graph-grid-line,
+.graph-axis {
+  stroke: rgba(148, 163, 184, 0.18);
+  stroke-width: 1;
+}
+
+.graph-label,
+.graph-legend-text {
+  fill: #94a3b8;
+  font-size: 11px;
+  font-family: Inter, system-ui, sans-serif;
 }
 
 .hidden {
@@ -241,17 +337,18 @@ a {
   }
 
   .panel-header,
-  .current-day-meta {
+  .current-day-meta,
+  .graphs-header,
+  .graph-card-header {
     flex-direction: column;
-  }
-
-  .action-links {
-    width: 100%;
-    justify-content: stretch;
   }
 
   .button-link {
     width: 100%;
+  }
+
+  .activity-actions .button-link {
+    width: auto;
   }
 
   .map-canvas {
