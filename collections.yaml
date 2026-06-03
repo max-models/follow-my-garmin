@@ -6,17 +6,15 @@
 # Leave livetrackUrl as null (or omit it) for planned or rest stages.
 
 collections:
-  - name: Day 1 — Departure
+  - name: Villach to Zagreb
     activities:
       - livetrackUrl: "https://livetrack.garmin.com/session/75d067c2-fde9-88e2-b508-6a9b61245200/token/647A34545C325599622E92BE268B2F8"
-        notes: Sample route used to populate the custom map.
-      - livetrackUrl: null
-        notes: Add a second Garmin session here if the day contains another activity.
+        notes: Day 1
+      - livetrackUrl: "https://livetrack.garmin.com/session/37ddc630-f92c-8d38-9e31-88b9cba7e000/token/5D1ECDF5FD5FEB867A3689951D08DB5"
+        notes: Day 2
 
-  - name: Day 2 — Mountain pass
+  - name: Copenhagen to Oslo
     activities:
       - livetrackUrl: null
         notes: Leave the activity URLs empty until those Garmin sessions exist.
 
-  - name: Day 3 — Rest day
-    activities: []
