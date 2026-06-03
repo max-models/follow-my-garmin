@@ -11,7 +11,7 @@ collections:
     activities:
       - livetrackUrl: "https://livetrack.garmin.com/session/75d067c2-fde9-88e2-b508-6a9b61245200/token/647A34545C325599622E92BE268B2F8"
         notes: Day 1
-        routeGpxFile: null
+        routeGpxFile: "Villach_to_Ljubljana_to_Zagreb.gpx"
       - livetrackUrl: "https://livetrack.garmin.com/session/37ddc630-f92c-8d38-9e31-88b9cba7e000/token/5D1ECDF5FD5FEB867A3689951D08DB5"
         notes: Day 2
 
