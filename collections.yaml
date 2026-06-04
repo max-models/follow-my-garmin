@@ -11,4 +11,4 @@ collections:
     routeGpxFile: "Villach_to_Ljubljana_to_Zagreb.gpx"
     activities:
       - garminConnectUrl: "https://livetrack.garmin.com/session/0ce182e5-c9c1-871f-9a4e-b322bb1e4600/token/FDCF3BE8511588E5ACDCCF1F24365377"
-        notes: Day 1
+        notes: To Ljubljana 
